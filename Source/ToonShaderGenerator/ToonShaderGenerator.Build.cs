@@ -45,7 +45,8 @@ public class ToonShaderGenerator : ModuleRules
 				"SlateCore",
 				"PropertyEditor",
 				"AssetRegistry",
-				"AssetTools"
+				"AssetTools",
+				"AppFramework"
 			}
 			);
 		

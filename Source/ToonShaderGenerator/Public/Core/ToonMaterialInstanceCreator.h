@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "Data/ToonBasicMaterialSettings.h"
 
 class UMaterialInterface;
 class UMaterialInstanceConstant;
@@ -14,6 +15,7 @@ public:
 		UMaterialInterface* ParentMaterial,
 		const FString& AssetName,
 		const FString& PackagePath,
+		const FToonBasicMaterialSettings& Settings,
 		FString& OutErrorMessage
 	);
 };

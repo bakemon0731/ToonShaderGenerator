@@ -3,6 +3,7 @@
 
 #include "CoreMinimal.h"
 #include "Data/ToonMaterialSlotInfo.h"
+#include "Data/ToonBasicMaterialSettings.h"
 #include "UObject/SoftObjectPath.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -22,6 +23,9 @@ public:
 	
 	// Material Slotごとのテクスチャ入力UI
 	TMap<int32, TSharedPtr<SVerticalBox>> MaterialInputBoxes;
+	
+	// 基本Toon Shaderの設定
+	FToonBasicMaterialSettings BasicMaterialSettings;
 
 private:
 
@@ -91,13 +95,15 @@ private:
 	void RefreshMaterialInputWidgets(int32 SlotIndex);
 	
 private:
-	
-	// Master Materialの選択変更
-	void HandleMasterMaterialChanged(const FAssetData& AssetData);
-
-	// 選択中のMaster Materialのパス
-	FString GetSelectedMasterMaterialPath() const;
 
 	// Material Instance生成ボタン
 	FReply HandleGenerateMaterialInstanceClicked(int32 SlotIndex);
+	
+private:
+	
+	// カラーピッカーを開く
+	FReply HandleOpenColorPicker(bool bEditBaseColor);
+	
+	// Shadow Threshold変更
+	void HandleShadowThresholdChanged(float NewValue);
 };

@@ -15,6 +15,7 @@ FToonMaterialInstanceCreator::Create(
     UMaterialInterface* ParentMaterial,
     const FString& AssetName,
     const FString& PackagePath,
+    const FToonBasicMaterialSettings& Settings,
     FString& OutErrorMessage)
 {
     OutErrorMessage.Reset();
@@ -126,6 +127,50 @@ FToonMaterialInstanceCreator::Create(
 
         return nullptr;
     }
+    
+    // ==========================================
+    //  Material Parameterを設定
+    // ==========================================
+    
+    // BaseColorのパラメータ情報
+    const FMaterialParameterInfo BaseColorInfo(
+        FName(TEXT("BaseColor")),
+        EMaterialParameterAssociation::GlobalParameter,
+        INDEX_NONE
+    );
+    
+    // ShadowColorのパラメータ情報
+    const FMaterialParameterInfo ShadowColorInfo(
+        FName(TEXT("ShadowColor")),
+        EMaterialParameterAssociation::GlobalParameter,
+        INDEX_NONE
+    );
+    
+    // ShadowThresholdのパラメータ情報
+    const FMaterialParameterInfo ShadowThresholdInfo(
+        FName(TEXT("ShadowThreshold")),
+        EMaterialParameterAssociation::GlobalParameter,
+        INDEX_NONE
+    );
+
+
+    // Vector Parameterを設定
+    CreatedInstance->SetVectorParameterValueEditorOnly(
+        BaseColorInfo,
+        Settings.BaseColor
+    );
+
+    CreatedInstance->SetVectorParameterValueEditorOnly(
+        ShadowColorInfo,
+        Settings.ShadowColor
+    );
+
+
+    // Scalar Parameterを設定
+    CreatedInstance->SetScalarParameterValueEditorOnly(
+        ShadowThresholdInfo,
+        Settings.ShadowThreshold
+    );
 
 
     // ==========================================

@@ -20,6 +20,10 @@
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Colors/SColorBlock.h"
+#include "Widgets/Colors/SColorPicker.h"
+#include "Widgets/Input/SSlider.h"
+#include "Widgets/SBoxPanel.h"
 
 
 // ==================================================
@@ -58,6 +62,10 @@ namespace
 
 void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
 {
+    // プラグイン標準のMaster Material
+    SelectedMasterMaterialPath = FSoftObjectPath(
+        TEXT("/ToonShaderGenerator/Materials/Master/M_Toon_Basic.M_Toon_Basic"));
+    
     // 用途の選択肢を初期化
     MaterialTypeOptions.Add(
         MakeShared<EToonMaterialType>(EToonMaterialType::Face)
@@ -118,40 +126,20 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
                 SNew(STextBlock)
                 .Text(FText::FromString(TEXT("Master Material")))
             ]
-
-            // Material選択欄
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(0.0f, 0.0f, 0.0f, 8.0f)
-            [
-                SNew(SObjectPropertyEntryBox)
-
-                // 通常のMaterialだけを選択可能にする
-                .AllowedClass(UMaterial::StaticClass())
-
-                .ObjectPath(
-                    this,
-                    &SToonShaderGeneratorWidget::GetSelectedMasterMaterialPath
-                )
-
-                .OnObjectChanged(
-                    this,
-                    &SToonShaderGeneratorWidget::HandleMasterMaterialChanged
-                )
-
-                .AllowClear(true)
-                .DisplayThumbnail(true)
-                .DisplayBrowse(true)
-                .DisplayUseSelected(true)
-            ]
-
-            // 選択結果
+            
+            // Master Materialの情報表示
             + SVerticalBox::Slot()
             .AutoHeight()
             .Padding(0.0f, 0.0f, 0.0f, 16.0f)
             [
-                SAssignNew(MasterMaterialText, STextBlock)
-                .Text(FText::FromString(TEXT("Master Material：未選択")))
+                SNew(SBorder)
+                .Padding(10.0f)
+                [
+                    SAssignNew(MasterMaterialText, STextBlock)
+                    .Text(FText::FromString(
+                        TEXT("Master Material：M_Toon_Basic（プラグイン標準）")
+                    ))    
+                ]
             ]
 
             // 対象メッシュ
@@ -192,6 +180,134 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
                 SAssignNew(SelectedMeshText, STextBlock)
                 .Text(FText::FromString(TEXT("選択中：なし")))
             ]
+
+            // ==========================================
+            // 基本Toon Shader設定
+            // ==========================================
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 12.0f, 0.0f, 8.0f)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("基本シェーダー設定")))
+            ]
+
+            // Base Color
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 4.0f)
+            [
+                SNew(SButton)
+                .OnClicked(
+                    this,
+                    &SToonShaderGeneratorWidget::HandleOpenColorPicker,
+                    true
+                )
+                [
+                    SNew(SHorizontalBox)
+
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                        .Text(FText::FromString(TEXT("Base Color")))
+                    ]
+
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    [
+                        SNew(SColorBlock)
+                        .Color_Lambda(
+                            [this]()
+                            {
+                                return BasicMaterialSettings.BaseColor;
+                            }
+                        )
+                        .Size(FVector2D(100.0f, 24.0f))
+                        .ShowBackgroundForAlpha(false)
+                    ]
+                ]
+            ]
+
+            // Shadow Color
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 4.0f)
+            [
+                SNew(SButton)
+                .OnClicked(
+                    this,
+                    &SToonShaderGeneratorWidget::HandleOpenColorPicker,
+                    false
+                )
+                [
+                    SNew(SHorizontalBox)
+
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                        .Text(FText::FromString(TEXT("Shadow Color")))
+                    ]
+
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    [
+                        SNew(SColorBlock)
+                        .Color_Lambda(
+                            [this]()
+                            {
+                                return BasicMaterialSettings.ShadowColor;
+                            }
+                        )
+                        .Size(FVector2D(100.0f, 24.0f))
+                        .ShowBackgroundForAlpha(false)
+                    ]
+                ]
+            ]
+
+            // Shadow Thresholdのラベル
+            +SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 8.0f, 0.0f, 4.0f)
+            [
+                SNew(STextBlock)
+                .Text_Lambda(
+                    [this]()
+                    {
+                        return FText::FromString(
+                            FString::Printf(
+                                TEXT("Shadow Threshold：%.2f"),
+                                BasicMaterialSettings.ShadowThreshold
+                            )
+                        );
+                    }
+                )    
+            ]
+
+            // Shadow Thresholdのスライダー
+            +SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, 12.0f)
+            [
+                SNew(SSlider)
+                .MinValue(0.0f)
+                .MaxValue(1.0f)
+                .Value_Lambda(
+                    [this]()
+                    {
+                        return BasicMaterialSettings.ShadowThreshold;
+                    }
+                )
+                .OnValueChanged(
+                    this,
+                    &SToonShaderGeneratorWidget::HandleShadowThresholdChanged
+                )    
+            ]
+
 
             // 情報取得ボタン
             + SVerticalBox::Slot()
@@ -879,37 +995,6 @@ void SToonShaderGeneratorWidget::RefreshMaterialInputWidgets(int32 SlotIndex)
     }
 }
 
-void SToonShaderGeneratorWidget::HandleMasterMaterialChanged(const FAssetData& AssetData)
-{
-    if (!AssetData.IsValid())
-    {
-        SelectedMasterMaterialPath.Reset();
-        
-        MasterMaterialText->SetText(
-            FText::FromString(
-                TEXT("Master Material：未選択")
-            )
-        );
-        return;
-    }
-    
-    SelectedMasterMaterialPath = AssetData.GetSoftObjectPath();
-    
-    MasterMaterialText->SetText(
-        FText::FromString(
-            FString::Printf(
-                TEXT("Master Material：%s"),
-                *AssetData.AssetName.ToString()
-            )
-        )
-    );    
-}
-
-FString SToonShaderGeneratorWidget::GetSelectedMasterMaterialPath() const
-{
-    return SelectedMasterMaterialPath.ToString();
-}
-
 // ==================================================
 // Material Instance生成関数
 // ==================================================
@@ -946,7 +1031,7 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(int32 S
     {
         StatusText->SetText(
             FText::FromString(
-                TEXT("エラー：Master Materialを読み込めません。")
+                TEXT("エラー：プラグイン標準のM_Toon_Basicを読み込めません。Plugin Contentの配置を確認してください。")
             )
         );
         return FReply::Handled();
@@ -985,6 +1070,7 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(int32 S
             MasterMaterial,
             AssetName,
             PackagePath,
+            BasicMaterialSettings,
             ErrorMessage
         );
     
@@ -1011,4 +1097,51 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(int32 S
         )    
     );
     return FReply::Handled();
+}
+
+FReply SToonShaderGeneratorWidget::HandleOpenColorPicker(bool bEditBaseColor)
+{
+    // 編集対象の色を取得
+    const FLinearColor InitialColor = bEditBaseColor
+        ? BasicMaterialSettings.BaseColor
+        : BasicMaterialSettings.ShadowColor;
+
+    // カラーピッカーの設定
+    FColorPickerArgs PickerArgs(
+        InitialColor,
+        FOnLinearColorValueChanged::CreateLambda(
+            [this, bEditBaseColor](FLinearColor NewColor)
+            {
+                // 選択された色を保存
+                if (bEditBaseColor)
+                {
+                    BasicMaterialSettings.BaseColor = NewColor;
+                }
+                else
+                {
+                    BasicMaterialSettings.ShadowColor = NewColor;
+                }
+
+                StatusText->SetText(
+                    FText::FromString(
+                        TEXT("状態：カラー設定を変更しました。")
+                    )
+                );
+            }
+        )
+    );
+
+    PickerArgs.bIsModal = true;
+    PickerArgs.bUseAlpha = false;
+
+    // カラーピッカーを表示
+    OpenColorPicker(PickerArgs);
+
+    return FReply::Handled();    
+}
+
+void SToonShaderGeneratorWidget::HandleShadowThresholdChanged(float NewValue)
+{
+    // 0.0 ～ 1.0の範囲に制限
+    BasicMaterialSettings.ShadowThreshold = FMath::Clamp(NewValue, 0.0f, 1.0f);
 }
