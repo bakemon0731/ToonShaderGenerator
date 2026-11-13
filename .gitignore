@@ -1,9 +1,9 @@
 
-# Unreal Engine generated files
+# Unreal Engine
 Binaries/
+DerivedDataCache/
 Intermediate/
 Saved/
-DerivedDataCache/
 
 # Visual Studio
 .vs/
@@ -11,7 +11,11 @@ DerivedDataCache/
 *.slnx
 *.VC.db
 *.VC.VC.opendb
+*.suo
+*.user
 
-# OS
-.DS_Store
-Thumbs.db
+# Other generated files
+.idea/
+*.pdb
+*.ilk
+*.log

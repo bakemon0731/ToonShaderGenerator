@@ -3,11 +3,11 @@
 #include "ToonShaderGenerator.h"
 #include "ToonShaderGeneratorStyle.h"
 #include "ToonShaderGeneratorCommands.h"
-#include "LevelEditor.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "ToolMenus.h"
+#include "UI/SToonShaderGeneratorWidget.h"
 
 static const FName ToonShaderGeneratorTabName("ToonShaderGenerator");
 
@@ -52,25 +52,13 @@ void FToonShaderGeneratorModule::ShutdownModule()
 	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(ToonShaderGeneratorTabName);
 }
 
+// Module側はウィンドウを開く責任だけを持ち、UIの構築は別クラスが担当
 TSharedRef<SDockTab> FToonShaderGeneratorModule::OnSpawnPluginTab(const FSpawnTabArgs& SpawnTabArgs)
 {
-	FText WidgetText = FText::Format(
-		LOCTEXT("WindowWidgetText", "Add code to {0} in {1} to override this window's contents"),
-		FText::FromString(TEXT("FToonShaderGeneratorModule::OnSpawnPluginTab")),
-		FText::FromString(TEXT("ToonShaderGenerator.cpp"))
-		);
-
 	return SNew(SDockTab)
 		.TabRole(ETabRole::NomadTab)
 		[
-			// Put your tab content here!
-			SNew(SBox)
-			.HAlign(HAlign_Center)
-			.VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-				.Text(WidgetText)
-			]
+			SNew(SToonShaderGeneratorWidget)
 		];
 }
 
