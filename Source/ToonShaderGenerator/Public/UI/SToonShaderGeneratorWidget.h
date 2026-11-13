@@ -19,6 +19,9 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+	
+	// Material Slotごとのテクスチャ入力UI
+	TMap<int32, TSharedPtr<SVerticalBox>> MaterialInputBoxes;
 
 private:
 
@@ -67,4 +70,17 @@ private:
 	TSharedPtr<STextBlock> StatusText;
 
 	TSharedPtr<SVerticalBox> MaterialSlotListBox;
+	
+private:
+	
+	TSharedRef<SWidget> CreateTextureInputWidget(int32 SlotIndex,EToonTextureInputType InputType,const FText& Label);
+
+	// 選択中のテクスチャパスを取得
+	FString GetTexturePath(int32 SlotIndex,EToonTextureInputType InputType) const;
+
+	// テクスチャ変更時の処理
+	void HandleTextureChanged(const FAssetData& AssetData,int32 SlotIndex,EToonTextureInputType InputType);
+
+	// 用途に応じて入力欄を更新
+	void RefreshMaterialInputWidgets(int32 SlotIndex);
 };

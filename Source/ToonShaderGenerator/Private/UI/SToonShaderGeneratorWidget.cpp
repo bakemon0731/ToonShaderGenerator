@@ -5,7 +5,9 @@
 
 #include "AssetRegistry/AssetData.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/Texture2D.h"
 #include "PropertyCustomizationHelpers.h"
+#include "Templates/SharedPointer.h"
 
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
@@ -221,6 +223,7 @@ void SToonShaderGeneratorWidget::HandleSkeletalMeshChanged(
 
     // Meshが変わったら前回の情報を破棄
     CurrentSlotInfos.Reset();
+    MaterialInputBoxes.Reset();
 
     MaterialSlotListBox->ClearChildren();
 
@@ -311,6 +314,7 @@ void SToonShaderGeneratorWidget::UpdateMaterialSlotList(
     const TArray<FToonMaterialSlotInfo>& SlotInfos)
 {
     MaterialSlotListBox->ClearChildren();
+    MaterialInputBoxes.Reset();
 
     // 取得結果を保持
     CurrentSlotInfos = SlotInfos;
@@ -353,9 +357,11 @@ void SToonShaderGeneratorWidget::UpdateMaterialSlotList(
             *SlotInfo.MaterialName
         );
 
-        // 現在の用途を取得
         const TSharedPtr<EToonMaterialType> InitialOption =
             FindMaterialTypeOption(SlotInfo.MaterialType);
+
+        // このSlot専用のテクスチャ入力領域
+        TSharedPtr<SVerticalBox> MaterialInputBox;
 
         MaterialSlotListBox->AddSlot()
         .AutoHeight()
@@ -396,14 +402,12 @@ void SToonShaderGeneratorWidget::UpdateMaterialSlotList(
                 // 用途選択
                 + SVerticalBox::Slot()
                 .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 8.0f)
                 [
                     SNew(SComboBox<TSharedPtr<EToonMaterialType>>)
-
                     .OptionsSource(&MaterialTypeOptions)
-
                     .InitiallySelectedItem(InitialOption)
 
-                    // ドロップダウン内の選択肢
                     .OnGenerateWidget_Lambda(
                         [](TSharedPtr<EToonMaterialType> Option)
                         {
@@ -416,7 +420,6 @@ void SToonShaderGeneratorWidget::UpdateMaterialSlotList(
                         }
                     )
 
-                    // 用途変更イベント
                     .OnSelectionChanged_Lambda(
                         [this, SlotIndex](
                             TSharedPtr<EToonMaterialType> SelectedType,
@@ -429,7 +432,6 @@ void SToonShaderGeneratorWidget::UpdateMaterialSlotList(
                         }
                     )
 
-                    // 現在選択中の表示
                     [
                         SNew(STextBlock)
                         .Text(
@@ -439,8 +441,22 @@ void SToonShaderGeneratorWidget::UpdateMaterialSlotList(
                         )
                     ]
                 ]
+
+                // 用途に応じたテクスチャ入力領域
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SAssignNew(MaterialInputBox, SVerticalBox)
+                ]
             ]
         ];
+
+        // Slotと入力領域を関連付ける
+        // 例えばSlot 0のFaceの入力欄だけを更新できるようになる
+        MaterialInputBoxes.Add(SlotIndex, MaterialInputBox);
+
+        // 現在の用途に応じた入力欄を生成
+        RefreshMaterialInputWidgets(SlotIndex);
     }
 }
 
@@ -465,6 +481,9 @@ void SToonShaderGeneratorWidget::HandleMaterialTypeChanged(
 
     // 選択された用途を保存
     CurrentSlotInfos[SlotIndex].MaterialType = *SelectedType;
+    
+    // 用途変更時にUIを更新
+    RefreshMaterialInputWidgets(SlotIndex);
 
     const FText TypeName = GetMaterialTypeDisplayName(*SelectedType);
 
@@ -517,4 +536,272 @@ SToonShaderGeneratorWidget::FindMaterialTypeOption(
     }
 
     return nullptr;
+}
+
+// ==================================================
+// テクスチャ入力欄を生成
+// ==================================================
+TSharedRef<SWidget> SToonShaderGeneratorWidget::CreateTextureInputWidget(int32 SlotIndex,
+    EToonTextureInputType InputType, const FText& Label)
+{
+    return SNew(SVerticalBox)
+
+         // 入力欄のタイトル
+         + SVerticalBox::Slot()
+         .AutoHeight()
+         .Padding(0.0f, 4.0f, 0.0f, 4.0f)
+         [
+             SNew(STextBlock)
+             .Text(Label)
+         ]
+
+         // Textureアセット選択欄
+         + SVerticalBox::Slot()
+         .AutoHeight()
+         .Padding(0.0f, 0.0f, 0.0f, 8.0f)
+         [
+             SNew(SObjectPropertyEntryBox)
+
+             // Texture2Dだけを選択可能にする
+             .AllowedClass(UTexture2D::StaticClass())
+
+             // 現在のテクスチャパス
+             .ObjectPath(
+                 TAttribute<FString>::CreateLambda(
+                     [this, SlotIndex, InputType]()
+                     {
+                         return GetTexturePath(SlotIndex, InputType);
+                     }
+                 )
+             )
+
+             // 選択変更時
+             .OnObjectChanged(
+                 FOnSetObject::CreateLambda(
+                     [this, SlotIndex, InputType](
+                         const FAssetData& AssetData)
+                     {
+                         HandleTextureChanged(
+                             AssetData,
+                             SlotIndex,
+                             InputType
+                         );
+                     }
+                 )
+             )
+
+             .AllowClear(true)
+             .DisplayThumbnail(true)
+             .DisplayBrowse(true)
+             .DisplayUseSelected(true)
+         ];
+}
+
+// ==================================================
+// 保存しているテクスチャの参照を返す関数
+// ==================================================
+FString SToonShaderGeneratorWidget::GetTexturePath(int32 SlotIndex, EToonTextureInputType InputType) const
+{
+    if (!CurrentSlotInfos.IsValidIndex(SlotIndex))
+    {
+        return FString();
+    }
+    
+    const FToonMaterialSlotInfo& SlotInfo = CurrentSlotInfos[SlotIndex];
+
+    switch (InputType)
+    {
+    case EToonTextureInputType::FaceSDF:
+        return SlotInfo.FaceSDFTexturePath.ToString();
+
+    case EToonTextureInputType::HairFlowMap:
+        return SlotInfo.HairFlowMapTexturePath.ToString();
+
+    case EToonTextureInputType::SkinBaseColor:
+        return SlotInfo.SkinBaseColorTexturePath.ToString();
+
+    case EToonTextureInputType::ClothingBaseColor:
+        return SlotInfo.ClothingBaseColorTexturePath.ToString();
+
+    case EToonTextureInputType::ClothingNormal:
+        return SlotInfo.ClothingNormalTexturePath.ToString();
+
+    case EToonTextureInputType::ClothingORM:
+        return SlotInfo.ClothingORMTexturePath.ToString();
+
+    default:
+        return FString();
+        
+        
+    }
+}
+
+// ==================================================
+// 選択されたTextureの参照を保存する関数
+// ==================================================
+void SToonShaderGeneratorWidget::HandleTextureChanged(const FAssetData& AssetData, int32 SlotIndex,
+    EToonTextureInputType InputType)
+{
+    if (!CurrentSlotInfos.IsValidIndex(SlotIndex))
+    {
+        return;
+    }
+    
+    // 配列の中にあるデータを参照で取得
+    FToonMaterialSlotInfo& SlotInfo = CurrentSlotInfos[SlotIndex];
+
+    // 選択されたTextureの参照パス
+    // 選択解除なら空のパスになる
+    const FSoftObjectPath TexturePath =
+        AssetData.IsValid()
+        ? AssetData.GetSoftObjectPath()
+        : FSoftObjectPath();
+
+    // 入力種類に応じて保存先を切り替える
+    switch (InputType)
+    {
+    case EToonTextureInputType::FaceSDF:
+        SlotInfo.FaceSDFTexturePath = TexturePath;
+        break;
+
+    case EToonTextureInputType::HairFlowMap:
+        SlotInfo.HairFlowMapTexturePath = TexturePath;
+        break;
+
+    case EToonTextureInputType::SkinBaseColor:
+        SlotInfo.SkinBaseColorTexturePath = TexturePath;
+        break;
+
+    case EToonTextureInputType::ClothingBaseColor:
+        SlotInfo.ClothingBaseColorTexturePath = TexturePath;
+        break;
+
+    case EToonTextureInputType::ClothingNormal:
+        SlotInfo.ClothingNormalTexturePath = TexturePath;
+        break;
+
+    case EToonTextureInputType::ClothingORM:
+        SlotInfo.ClothingORMTexturePath = TexturePath;
+        break;
+
+    default:
+        return;
+    }
+
+    StatusText->SetText(
+        FText::FromString(
+            AssetData.IsValid()
+            ? TEXT("状態：テクスチャを設定しました。")
+            : TEXT("状態：テクスチャを解除しました。")
+        )
+    );
+}
+
+// ==================================================
+// 用途に応じて入力欄を切り替える関数
+// ==================================================
+void SToonShaderGeneratorWidget::RefreshMaterialInputWidgets(int32 SlotIndex)
+{
+    if (!CurrentSlotInfos.IsValidIndex(SlotIndex))
+    {
+        return;
+    }
+
+    TSharedPtr<SVerticalBox>* FoundBox = MaterialInputBoxes.Find(SlotIndex);
+
+    if (FoundBox == nullptr || !FoundBox->IsValid())
+    {
+        return;
+    }
+
+    TSharedPtr<SVerticalBox> InputBox = *FoundBox;
+
+    // 以前の入力欄を削除
+    InputBox->ClearChildren();
+
+    const EToonMaterialType MaterialType =
+        CurrentSlotInfos[SlotIndex].MaterialType;
+
+    // 共通の入力欄追加処理
+    auto AddTextureInput =
+        [this, SlotIndex, InputBox](
+            EToonTextureInputType InputType,
+            const FText& Label)
+        {
+            InputBox->AddSlot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+            [
+                CreateTextureInputWidget(
+                    SlotIndex,
+                    InputType,
+                    Label
+                )
+            ];
+        };
+    
+    // Material Slotの用途を確認
+    switch (MaterialType)
+    {
+    case EToonMaterialType::Face:
+
+        AddTextureInput(
+            EToonTextureInputType::FaceSDF,
+            FText::FromString(TEXT("Face SDF Texture"))
+        );
+
+        break;
+
+    case EToonMaterialType::Hair:
+
+        AddTextureInput(
+            EToonTextureInputType::HairFlowMap,
+            FText::FromString(TEXT("Hair Flow Map"))
+        );
+
+        break;
+
+    case EToonMaterialType::Skin:
+
+        AddTextureInput(
+            EToonTextureInputType::SkinBaseColor,
+            FText::FromString(TEXT("Skin Base Color"))
+        );
+
+        break;
+
+    case EToonMaterialType::Clothing:
+
+        AddTextureInput(
+            EToonTextureInputType::ClothingBaseColor,
+            FText::FromString(TEXT("Base Color"))
+        );
+
+        AddTextureInput(
+            EToonTextureInputType::ClothingNormal,
+            FText::FromString(TEXT("Normal"))
+        );
+
+        AddTextureInput(
+            EToonTextureInputType::ClothingORM,
+            FText::FromString(TEXT("ORM"))
+        );
+
+        break;
+
+    case EToonMaterialType::Other:
+
+    default:
+
+        InputBox->AddSlot()
+        .AutoHeight()
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(
+                TEXT("追加テクスチャ入力はありません。")
+            ))
+        ];
+
+        break;
+    }
 }
