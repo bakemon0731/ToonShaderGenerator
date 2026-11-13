@@ -5,8 +5,10 @@
 #include "Widgets/SCompoundWidget.h"
 
 struct FAssetData;
+struct FToonMaterialSlotInfo;
 
 class STextBlock;
+class SVerticalBox;
 
 class SToonShaderGeneratorWidget : public SCompoundWidget
 {
@@ -26,15 +28,25 @@ private:
 	// 現在選択されているアセットのパスを取得
 	FString GetSelectedSkeletalMeshPath() const;
 	
-private:
+	// Meshの情報取得ボタン
+	FReply HandleInspectMeshClicked();
 	
-	// 状態表示用UI
-	TSharedPtr<STextBlock> StatusText;
+	// Material Slot一覧の表示更新
+	void UpdateMaterialSlotList(const TArray<FToonMaterialSlotInfo>& SlotInfos);
+	
+private:
 	
 	// 選択されたSkeletal Meshの参照(アセットの参照を保持し、メモリには読み込まない)
 	FSoftObjectPath SelectedSkeletalMeshPath;
 	
-	// 選択中のアセット名を表示するUI
+	// 状態表示用UI
+	TSharedPtr<STextBlock> StatusText;
 	TSharedPtr<STextBlock> SelectedMeshText;
+	TSharedPtr<STextBlock> MaterialSlotCountText;
+	
+	// Material Slot一覧の表示領域
+	TSharedPtr<SVerticalBox> MaterialSlotListBox;
+	
+	
 	
 };
