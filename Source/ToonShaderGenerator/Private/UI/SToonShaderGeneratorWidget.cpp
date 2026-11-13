@@ -2,6 +2,10 @@
 #include "UI/SToonShaderGeneratorWidget.h"
 
 #include "Core/ToonMeshInspector.h"
+#include "Core/ToonMaterialInstanceCreator.h"
+
+#include "Materials/Material.h"
+#include "Materials/MaterialInstanceConstant.h"
 
 #include "AssetRegistry/AssetData.h"
 #include "Engine/SkeletalMesh.h"
@@ -102,6 +106,54 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
                 ))
             ]
 
+            // ==========================================
+            // Master Material選択
+            // ==========================================
+
+            //ラベル
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, 6.0f)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("Master Material")))
+            ]
+
+            // Material選択欄
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, 8.0f)
+            [
+                SNew(SObjectPropertyEntryBox)
+
+                // 通常のMaterialだけを選択可能にする
+                .AllowedClass(UMaterial::StaticClass())
+
+                .ObjectPath(
+                    this,
+                    &SToonShaderGeneratorWidget::GetSelectedMasterMaterialPath
+                )
+
+                .OnObjectChanged(
+                    this,
+                    &SToonShaderGeneratorWidget::HandleMasterMaterialChanged
+                )
+
+                .AllowClear(true)
+                .DisplayThumbnail(true)
+                .DisplayBrowse(true)
+                .DisplayUseSelected(true)
+            ]
+
+            // 選択結果
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, 16.0f)
+            [
+                SAssignNew(MasterMaterialText, STextBlock)
+                .Text(FText::FromString(TEXT("Master Material：未選択")))
+            ]
+
             // 対象メッシュ
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -110,7 +162,7 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
                 SNew(STextBlock)
                 .Text(FText::FromString(TEXT("対象メッシュ")))
             ]
-
+            
             // Mesh選択欄
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -447,6 +499,27 @@ void SToonShaderGeneratorWidget::UpdateMaterialSlotList(
                 .AutoHeight()
                 [
                     SAssignNew(MaterialInputBox, SVerticalBox)
+                ]
+
+                // Material Instance生成ボタン
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 8.0f, 0.0f, 0.0f)
+                [
+                    SNew(SButton)
+                    .Text(
+                        FText::FromString(
+                            TEXT("このSlotのMaterial Instanceを生成")
+                        )
+                    )
+                    .OnClicked_Lambda(
+                        [this, SlotIndex]()
+                        {
+                            return HandleGenerateMaterialInstanceClicked(
+                                SlotIndex
+                            );    
+                        }
+                    )    
                 ]
             ]
         ];
@@ -804,4 +877,138 @@ void SToonShaderGeneratorWidget::RefreshMaterialInputWidgets(int32 SlotIndex)
 
         break;
     }
+}
+
+void SToonShaderGeneratorWidget::HandleMasterMaterialChanged(const FAssetData& AssetData)
+{
+    if (!AssetData.IsValid())
+    {
+        SelectedMasterMaterialPath.Reset();
+        
+        MasterMaterialText->SetText(
+            FText::FromString(
+                TEXT("Master Material：未選択")
+            )
+        );
+        return;
+    }
+    
+    SelectedMasterMaterialPath = AssetData.GetSoftObjectPath();
+    
+    MasterMaterialText->SetText(
+        FText::FromString(
+            FString::Printf(
+                TEXT("Master Material：%s"),
+                *AssetData.AssetName.ToString()
+            )
+        )
+    );    
+}
+
+FString SToonShaderGeneratorWidget::GetSelectedMasterMaterialPath() const
+{
+    return SelectedMasterMaterialPath.ToString();
+}
+
+// ==================================================
+// Material Instance生成関数
+// ==================================================
+FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(int32 SlotIndex)
+{
+    
+    // Slotの有効性を確認
+    if (!CurrentSlotInfos.IsValidIndex(SlotIndex))
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("エラー：Material Slotが無効です。")
+            )
+        );
+        return FReply::Handled();
+    }
+    
+    // Master Materialを確認
+    if (SelectedMasterMaterialPath.IsNull())
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("エラー：Master Materialを選択してください。")
+            )
+        );
+        return FReply::Handled();
+    }
+    
+    UObject* LoadedMasterObject = SelectedMasterMaterialPath.TryLoad();
+    
+    UMaterial* MasterMaterial = Cast<UMaterial>(LoadedMasterObject);
+    
+    if (!IsValid(MasterMaterial))
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("エラー：Master Materialを読み込めません。")
+            )
+        );
+        return FReply::Handled();
+    }
+    
+    // Skeletal Meshを確認
+    UObject* LoadedMeshObject = SelectedSkeletalMeshPath.TryLoad();
+    
+    USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(LoadedMeshObject);
+    
+    if (!IsValid(SkeletalMesh))
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("エラー：Skeletal Meshを読み込めません。")
+            )
+        );
+        return FReply::Handled();
+    }
+    
+    // 生成するアセット名を決定
+    const FString AssetName = FString::Printf(
+        TEXT("MI_Toon_%s_Slot_%02d"),
+        *SkeletalMesh->GetName(),
+        SlotIndex
+    );
+    
+    // 生成先
+    const FString PackagePath = TEXT("/Game/ToonGenerated/Materials");
+    
+    // Material Instanceを生成
+    FString ErrorMessage;
+    
+    UMaterialInstanceConstant* CreatedInstance =
+        FToonMaterialInstanceCreator::Create(
+            MasterMaterial,
+            AssetName,
+            PackagePath,
+            ErrorMessage
+        );
+    
+    if (!IsValid(CreatedInstance))
+    {
+        StatusText->SetText(
+            FText::FromString(
+                FString::Printf(
+                    TEXT("生成失敗：%s"),
+                    * ErrorMessage
+                )
+            )
+        );
+        return FReply::Handled();
+    }
+    
+    // 結果を表示
+    StatusText->SetText(
+        FText::FromString(
+            FString::Printf(
+                TEXT("生成成功：%s"),
+                *CreatedInstance->GetName()
+            )
+        )    
+    );
+    return FReply::Handled();
 }

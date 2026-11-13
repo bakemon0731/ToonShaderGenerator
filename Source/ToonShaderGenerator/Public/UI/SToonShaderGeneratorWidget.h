@@ -52,6 +52,12 @@ private:
 	TSharedPtr<EToonMaterialType> FindMaterialTypeOption(
 		EToonMaterialType MaterialType
 	) const;
+	
+	// 選択されたMaster Materialの参照
+	FSoftObjectPath SelectedMasterMaterialPath;
+
+	// Master Materialの表示
+	TSharedPtr<STextBlock> MasterMaterialText;
 
 private:
 
@@ -83,4 +89,15 @@ private:
 
 	// 用途に応じて入力欄を更新
 	void RefreshMaterialInputWidgets(int32 SlotIndex);
+	
+private:
+	
+	// Master Materialの選択変更
+	void HandleMasterMaterialChanged(const FAssetData& AssetData);
+
+	// 選択中のMaster Materialのパス
+	FString GetSelectedMasterMaterialPath() const;
+
+	// Material Instance生成ボタン
+	FReply HandleGenerateMaterialInstanceClicked(int32 SlotIndex);
 };
