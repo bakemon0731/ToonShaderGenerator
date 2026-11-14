@@ -55,4 +55,14 @@ struct FToonMaterialSlotInfo
 	FSoftObjectPath ClothingBaseColorTexturePath;
 	FSoftObjectPath ClothingNormalTexturePath;
 	FSoftObjectPath ClothingORMTexturePath;
+	
+	// 適用前の元のMaterial
+	FSoftObjectPath OriginalMaterialPath;
+	
+	// 元のMaterial情報を取得済みか
+	bool bHasOriginalMaterialBackup = false;
+	
+	// 生成したMaterial Instance
+	FSoftObjectPath GeneratedMaterialInstancePath;
+	
 };

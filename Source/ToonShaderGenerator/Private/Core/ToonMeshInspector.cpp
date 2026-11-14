@@ -50,6 +50,19 @@ bool FToonMeshInspector::GetMaterialSlotInfos(
 		// Material Interfaceを取得
 		UMaterialInterface* MaterialInterface =
 			MaterialInfo.MaterialInterface.Get();
+		
+		// 元のMaterialをバックアップ
+		SlotInfo.bHasOriginalMaterialBackup = true;
+		
+		if (IsValid(MaterialInterface))
+		{
+			SlotInfo.OriginalMaterialPath = FSoftObjectPath(MaterialInterface->GetPathName());
+		}
+		else
+		{
+			// 元のMaterialが未設定だった場合
+			SlotInfo.OriginalMaterialPath.Reset();
+		}
 
 		// Materialが設定されているか確認
 		SlotInfo.bHasMaterial = IsValid(MaterialInterface);

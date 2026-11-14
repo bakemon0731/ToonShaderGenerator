@@ -26,6 +26,9 @@ public:
 	
 	// 基本Toon Shaderの設定
 	FToonBasicMaterialSettings BasicMaterialSettings;
+	
+	// Material名表示WidgetをSlotごとに保持
+	TMap<int32, TSharedPtr<STextBlock>>  MaterialNameTextBlocks;
 
 private:
 
@@ -106,4 +109,12 @@ private:
 	
 	// Shadow Threshold変更
 	void HandleShadowThresholdChanged(float NewValue);
+	
+private:
+	
+	// 生成したMaterial Instanceを適用
+	FReply HandleApplyMaterialInstanceClicked(int32 SlotIndex);
+	
+	// 元のMaterialに戻す
+	FReply HandleRestoreOriginalMaterialClicked(int32 SlotIndex);
 };
