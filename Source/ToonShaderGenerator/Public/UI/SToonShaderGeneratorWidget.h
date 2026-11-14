@@ -4,6 +4,7 @@
 #include "CoreMinimal.h"
 #include "Data/ToonMaterialSlotInfo.h"
 #include "Data/ToonBasicMaterialSettings.h"
+#include "Data/ToonValidationIssue.h"
 #include "UObject/SoftObjectPath.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -29,6 +30,12 @@ public:
 	
 	// Material名表示WidgetをSlotごとに保持
 	TMap<int32, TSharedPtr<STextBlock>>  MaterialNameTextBlocks;
+	
+	// 検証結果の概要
+	TSharedPtr<STextBlock> ValidationSummaryText;
+
+	// 検証結果の一覧
+	TSharedPtr<SVerticalBox> ValidationResultBox;
 
 private:
 
@@ -117,4 +124,12 @@ private:
 	
 	// 元のMaterialに戻す
 	FReply HandleRestoreOriginalMaterialClicked(int32 SlotIndex);
+	
+private:
+	
+	// テクスチャ検証ボタン
+	FReply HandleValidateTexturesClicked();
+
+	// 検証結果をUIに表示
+	void DisplayValidationResults(const TArray<FToonValidationIssue>& Issues);
 };

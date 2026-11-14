@@ -4,6 +4,7 @@
 #include "Core/ToonMeshInspector.h"
 #include "Core/ToonMaterialInstanceCreator.h"
 #include "Core/ToonMeshMaterialAssignmentService.h"
+#include "Core/ToonTextureValidator.h"
 
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceConstant.h"
@@ -340,6 +341,52 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
                 .Text(FText::FromString(TEXT("Material Slot：未取得")))
             ]
 
+            // ==========================================
+            // Texture Validator
+            // ==========================================
+
+            // 検証ボタン
+            +SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 12.0f, 0.0f, 8.0f)
+            [
+                SNew(SButton)
+                .Text(
+                    FText::FromString(
+                        TEXT("テクスチャを検証")
+                    )
+                )
+                .OnClicked(
+                    this,
+                    &SToonShaderGeneratorWidget::HandleValidateTexturesClicked
+                )    
+            ]
+
+            // 検証結果の概要
+            +SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, 6.0f)
+            [
+                SAssignNew(ValidationSummaryText, STextBlock)
+                .Text(
+                    FText::FromString(
+                        TEXT("検証：未実行")
+                    )
+                )    
+            ]
+
+            // 検証結果の一覧
+            +SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, 12.0f)
+            [
+                SNew(SBorder)
+                .Padding(8.0f)
+                [
+                    SAssignNew(ValidationResultBox, SVerticalBox)
+                ]
+            ]
+            
             // Slot一覧
             + SVerticalBox::Slot()
             .FillHeight(1.0f)
@@ -513,6 +560,9 @@ void SToonShaderGeneratorWidget::UpdateMaterialSlotList(
     MaterialSlotListBox->ClearChildren();
     MaterialInputBoxes.Reset();
     MaterialNameTextBlocks.Reset();
+    // 前回の検証結果をリセット
+    ValidationResultBox->ClearChildren();
+    ValidationSummaryText->SetText(FText::FromString(TEXT("検証：未実行")));
 
     // 取得結果を保持
     CurrentSlotInfos = SlotInfos;
@@ -768,6 +818,10 @@ void SToonShaderGeneratorWidget::HandleMaterialTypeChanged(
             )
         )
     );
+    
+    // 用途変更によって検証対象が変化したためリセット
+    ValidationResultBox->ClearChildren();
+    ValidationSummaryText->SetText(FText::FromString(TEXT("検証：未実行（用途変更）")));
 }
 
 
@@ -964,6 +1018,10 @@ void SToonShaderGeneratorWidget::HandleTextureChanged(const FAssetData& AssetDat
             : TEXT("状態：テクスチャを解除しました。")
         )
     );
+    
+    // テクスチャを変更したため検証結果を無効化
+    ValidationResultBox->ClearChildren();
+    ValidationSummaryText->SetText(FText::FromString(TEXT("検証：未実行（テクスチャ変更）")));
 }
 
 // ==================================================
@@ -1524,3 +1582,137 @@ FReply SToonShaderGeneratorWidget::HandleRestoreOriginalMaterialClicked(int32 Sl
     );
     return FReply::Handled();
 }
+
+FReply SToonShaderGeneratorWidget::HandleValidateTexturesClicked()
+{
+    // Material Slotの確認
+    if (CurrentSlotInfos.IsEmpty())
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("エラー：先にMaterial Slot情報を取得してください。")
+            )
+        );
+        return FReply::Handled();
+    }
+    
+    // 検証結果を格納する配列
+    TArray<FToonValidationIssue> ValidationIssues;
+    
+    // 全Material Slotを検証
+    for (const FToonMaterialSlotInfo& SlotInfo : CurrentSlotInfos)
+    {
+        FToonTextureValidator::ValidateSlot(
+            SlotInfo,
+            ValidationIssues
+        );    
+    }
+    
+    // UIに結果を表示
+    DisplayValidationResults(ValidationIssues);
+    
+    return FReply::Handled();
+}
+
+void SToonShaderGeneratorWidget::DisplayValidationResults(const TArray<FToonValidationIssue>& Issues)
+{
+    // 前回の検証結果を削除
+    ValidationResultBox->ClearChildren();
+    
+    int32 ErrorCount = 0;
+    int32 WarningCount = 0;
+    
+    // エラー・警告の数を集計
+    for (const FToonValidationIssue& Issue : Issues)
+    {
+        if (Issue.Severity == EToonValidationSeverity::Error)
+        {
+            ++ErrorCount;
+        }
+        else
+        {
+            ++WarningCount;
+        }
+    }
+    
+    //  検証結果の概要
+    const FString Summary = FString::Printf(
+        TEXT("検証結果：エラー %d件 / 警告 %d件"),
+        ErrorCount,
+        WarningCount
+    );
+    
+    ValidationSummaryText->SetText(FText::FromString(Summary));
+    
+    // 問題がなかった場合
+    if (Issues.IsEmpty())
+    {
+        ValidationResultBox->AddSlot()
+        .AutoHeight()
+        [
+            SNew(STextBlock)
+            .Text(
+                FText::FromString(
+                    TEXT("問題は検出されませんでした。")
+                )
+            )
+        ];
+
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("状態：テクスチャ検証に成功しました。")
+            )
+        );
+
+        return;
+    }
+    
+    // 個別の検証結果を表示
+    for (const FToonValidationIssue& Issue : Issues)
+    {
+        const bool bIsError = 
+            Issue.Severity == EToonValidationSeverity::Error;
+        
+        const FString SeverityText = 
+            bIsError ? TEXT("[ERROR]") : TEXT("[WARNING]");
+        
+        const FString ResultText = FString::Printf(
+            TEXT("%s Slot[%d] %s / %s\n%s"),
+            *SeverityText,
+            Issue.SlotIndex,
+            *Issue.SlotName.ToString(),
+            *Issue.InputName,
+            *Issue.Message.ToString()
+        );
+        
+        ValidationResultBox->AddSlot()
+        .AutoHeight()
+        .Padding(0.0f, 2.0f, 0.0f, 6.0f)
+        [
+           SNew(STextBlock)
+           .Text(
+               FText::FromString(ResultText)
+           )
+           .AutoWrapText(true)
+       ];
+    }
+    
+    // ステータス更新
+    if (ErrorCount > 0)
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("状態：テクスチャにエラーがあります。")
+            )
+        );
+    }
+    else
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("状態：検証完了。警告があります。")
+            )
+        );
+    }
+}
+
