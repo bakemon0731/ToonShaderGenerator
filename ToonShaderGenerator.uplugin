@@ -16,6 +16,11 @@
 	"Installed": false,
 	"Modules": [
 		{
+			"Name": "ToonShaderGeneratorRuntime",
+        	"Type": "Runtime",
+        	"LoadingPhase": "Default"
+		},
+		{
 			"Name": "ToonShaderGenerator",
 			"Type": "Editor",
 			"LoadingPhase": "Default"
