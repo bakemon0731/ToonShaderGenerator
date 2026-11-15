@@ -62,6 +62,7 @@ FToonMaterialInstanceCreator::Create(
     UTexture2D* FaceSDFTexture = nullptr;
     UTexture2D* HairFlowMapTexture = nullptr;
     UTexture2D* LoadedHairFlowMap = nullptr;
+    UTexture2D* LoadedSkinBaseColorTexture = nullptr;
 
 
     if (Settings.MaterialType == EToonMaterialType::Face)
@@ -86,8 +87,7 @@ FToonMaterialInstanceCreator::Create(
             return nullptr;
         }
     }
-
-
+    
     if (Settings.MaterialType == EToonMaterialType::Hair
     && Settings.bUseHairFlowMap)
     {
@@ -108,6 +108,32 @@ FToonMaterialInstanceCreator::Create(
         {
             OutErrorMessage = TEXT(
                 "Hair Flow Mapの読み込みに失敗しました。"
+            );
+
+            return nullptr;
+        }
+    }
+    
+    if (Settings.MaterialType == EToonMaterialType::Skin)
+    {
+        if (Settings.SkinBaseColorTexturePath.IsNull())
+        {
+            OutErrorMessage = TEXT(
+                "Skin BaseColor Textureが設定されていません。"
+            );
+
+            return nullptr;
+        }
+
+        LoadedSkinBaseColorTexture =
+            Cast<UTexture2D>(
+                Settings.SkinBaseColorTexturePath.TryLoad()
+            );
+
+        if (!LoadedSkinBaseColorTexture)
+        {
+            OutErrorMessage = TEXT(
+                "Skin BaseColor Textureの読み込みに失敗しました。"
             );
 
             return nullptr;
@@ -304,6 +330,40 @@ FToonMaterialInstanceCreator::Create(
 
         break;
 
+    // ==========================================
+    // Hair Shader
+    // ========================================== 
+    case EToonMaterialType::Skin:
+        
+        // Base Color Texture
+        CreatedInstance->SetTextureParameterValueEditorOnly(
+            FMaterialParameterInfo(TEXT("SkinBaseColorTexture")),
+            LoadedSkinBaseColorTexture
+        );
+
+        // Skin Tint
+        CreatedInstance->SetVectorParameterValueEditorOnly(
+            FMaterialParameterInfo(TEXT("SkinTint")),
+            Settings.Basic.BaseColor
+        );
+
+        // Shadow Color
+        CreatedInstance->SetVectorParameterValueEditorOnly(
+            FMaterialParameterInfo(TEXT("SkinShadowColor")),
+            Settings.Basic.ShadowColor
+        );
+
+        // Shadow Threshold
+        CreatedInstance->SetScalarParameterValueEditorOnly(
+            FMaterialParameterInfo(TEXT("SkinShadowThreshold")),
+            FMath::Clamp(
+                Settings.Basic.ShadowThreshold,
+                0.0f,
+                1.0f
+            )
+        );
+        
+        break;
 
     default:
 

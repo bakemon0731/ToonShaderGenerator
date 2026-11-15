@@ -1387,7 +1387,7 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
 
     Settings.bUseHairFlowMap = bUseHairFlowMap;
     Settings.HairFlowMapTexturePath = SlotInfo.HairFlowMapTexturePath;
-
+    
     // Face SDF
     Settings.FaceSDFTexturePath =
         SlotInfo.FaceSDFTexturePath;
@@ -1395,7 +1395,10 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
     // Hair Flow Map
     Settings.HairFlowMapTexturePath =
         SlotInfo.HairFlowMapTexturePath;
-
+    
+    // Skin Base
+    Settings.SkinBaseColorTexturePath =
+        SlotInfo.SkinBaseColorTexturePath;
 
     // ==========================================
     // アセット名を決定

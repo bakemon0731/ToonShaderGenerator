@@ -34,4 +34,9 @@ struct FToonMaterialInstanceSettings
 	
 	// Flow Mapの有効・無効
 	bool bUseHairFlowMap = false;
+	
+	// ==========================================
+	// Skin Shader
+	// ==========================================
+	FSoftObjectPath SkinBaseColorTexturePath;
 };

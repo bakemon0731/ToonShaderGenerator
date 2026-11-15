@@ -43,10 +43,12 @@ bool FToonMasterMaterialRegistry::Resolve(EToonMaterialType MaterialType, FSoftO
 
 	case EToonMaterialType::Skin:
 
-		OutErrorMessage =
-			TEXT("Skin専用Master Materialはまだ実装されていません。");
+		AssetPath = 
+			TEXT("/ToonShaderGenerator/Materials/Master/M_Toon_Skin.M_Toon_Skin");
+		
+		OutMaterialName = TEXT("M_Toon_Skin");
 
-		return false;
+		break;
 
 
 	case EToonMaterialType::Clothing:
