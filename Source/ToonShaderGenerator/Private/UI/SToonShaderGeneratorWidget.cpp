@@ -5,6 +5,7 @@
 #include "Core/ToonMaterialInstanceCreator.h"
 #include "Core/ToonMeshMaterialAssignmentService.h"
 #include "Core/ToonTextureValidator.h"
+#include "Core/ToonMasterMaterialRegistry.h"
 
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceConstant.h"
@@ -66,9 +67,6 @@ namespace
 
 void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
 {
-    // プラグイン標準のMaster Material
-    SelectedMasterMaterialPath = FSoftObjectPath(
-        TEXT("/ToonShaderGenerator/Materials/Master/M_Toon_Basic.M_Toon_Basic"));
     
     // 用途の選択肢を初期化
     MaterialTypeOptions.Add(
@@ -141,7 +139,7 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
                 [
                     SAssignNew(MasterMaterialText, STextBlock)
                     .Text(FText::FromString(
-                        TEXT("Master Material：M_Toon_Basic（プラグイン標準）")
+                    TEXT("Master Material：Material Slotの用途に応じて自動選択")
                     ))    
                 ]
             ]
@@ -1136,10 +1134,12 @@ void SToonShaderGeneratorWidget::RefreshMaterialInputWidgets(int32 SlotIndex)
 // ==================================================
 // Material Instance生成関数
 // ==================================================
-FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(int32 SlotIndex)
+FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
+    int32 SlotIndex)
 {
-    
-    // Slotの有効性を確認
+    // ==========================================
+    // Material Slotの検証
+    // ==========================================
     if (!CurrentSlotInfos.IsValidIndex(SlotIndex))
     {
         StatusText->SetText(
@@ -1147,39 +1147,35 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(int32 S
                 TEXT("エラー：Material Slotが無効です。")
             )
         );
+
         return FReply::Handled();
     }
-    
-    // Master Materialを確認
-    if (SelectedMasterMaterialPath.IsNull())
+
+    FToonMaterialSlotInfo& SlotInfo =
+        CurrentSlotInfos[SlotIndex];
+
+
+    // ==========================================
+    // Skeletal Meshの検証
+    // ==========================================
+
+    if (SelectedSkeletalMeshPath.IsNull())
     {
         StatusText->SetText(
             FText::FromString(
-                TEXT("エラー：Master Materialを選択してください。")
+                TEXT("エラー：Skeletal Meshを選択してください。")
             )
         );
+
         return FReply::Handled();
     }
-    
-    UObject* LoadedMasterObject = SelectedMasterMaterialPath.TryLoad();
-    
-    UMaterial* MasterMaterial = Cast<UMaterial>(LoadedMasterObject);
-    
-    if (!IsValid(MasterMaterial))
-    {
-        StatusText->SetText(
-            FText::FromString(
-                TEXT("エラー：プラグイン標準のM_Toon_Basicを読み込めません。Plugin Contentの配置を確認してください。")
-            )
-        );
-        return FReply::Handled();
-    }
-    
-    // Skeletal Meshを確認
-    UObject* LoadedMeshObject = SelectedSkeletalMeshPath.TryLoad();
-    
-    USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(LoadedMeshObject);
-    
+
+    UObject* LoadedMeshObject =
+        SelectedSkeletalMeshPath.TryLoad();
+
+    USkeletalMesh* SkeletalMesh =
+        Cast<USkeletalMesh>(LoadedMeshObject);
+
     if (!IsValid(SkeletalMesh))
     {
         StatusText->SetText(
@@ -1187,57 +1183,158 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(int32 S
                 TEXT("エラー：Skeletal Meshを読み込めません。")
             )
         );
+
         return FReply::Handled();
     }
-    
-    // 生成するアセット名を決定
+
+
+    // ==========================================
+    // Master Materialを自動選択
+    // ==========================================
+
+    FSoftObjectPath MasterMaterialPath;
+
+    FString MasterMaterialName;
+    FString ResolveError;
+
+    const bool bResolved =
+        FToonMasterMaterialRegistry::Resolve(
+            SlotInfo.MaterialType,
+            MasterMaterialPath,
+            MasterMaterialName,
+            ResolveError
+        );
+
+    if (!bResolved)
+    {
+        StatusText->SetText(
+            FText::FromString(
+                FString::Printf(
+                    TEXT("生成できません：%s"),
+                    *ResolveError
+                )
+            )
+        );
+
+        return FReply::Handled();
+    }
+
+
+    // ==========================================
+    // Master Materialをロード
+    // ==========================================
+
+    UObject* LoadedMasterObject =
+        MasterMaterialPath.TryLoad();
+
+    UMaterial* MasterMaterial =
+        Cast<UMaterial>(LoadedMasterObject);
+
+    if (!IsValid(MasterMaterial))
+    {
+        StatusText->SetText(
+            FText::FromString(
+                FString::Printf(
+                    TEXT("%sを読み込めません。Plugin Contentを確認してください。"),
+                    *MasterMaterialName
+                )
+            )
+        );
+
+        return FReply::Handled();
+    }
+
+
+    // ==========================================
+    // Material Instance設定を作成
+    // ==========================================
+
+    FToonMaterialInstanceSettings Settings;
+
+    // 用途
+    Settings.MaterialType = SlotInfo.MaterialType;
+
+    // 基本カラー設定
+    Settings.Basic = BasicMaterialSettings;
+
+    // Face SDF
+    Settings.FaceSDFTexturePath =
+        SlotInfo.FaceSDFTexturePath;
+
+    // Hair Flow Map
+    Settings.HairFlowMapTexturePath =
+        SlotInfo.HairFlowMapTexturePath;
+
+
+    // ==========================================
+    // アセット名を決定
+    // ==========================================
+
     const FString AssetName = FString::Printf(
         TEXT("MI_Toon_%s_Slot_%02d"),
         *SkeletalMesh->GetName(),
         SlotIndex
     );
-    
-    // 生成先
-    const FString PackagePath = TEXT("/Game/ToonGenerated/Materials");
-    
-    // Material Instanceを生成
+
+    const FString PackagePath =
+        TEXT("/Game/ToonGenerated/Materials");
+
+
+    // ==========================================
+    //  Material Instance生成
+    // ==========================================
+
     FString ErrorMessage;
-    
+
     UMaterialInstanceConstant* CreatedInstance =
         FToonMaterialInstanceCreator::Create(
             MasterMaterial,
             AssetName,
             PackagePath,
-            BasicMaterialSettings,
+            Settings,
             ErrorMessage
         );
-    
+
     if (!IsValid(CreatedInstance))
     {
         StatusText->SetText(
             FText::FromString(
                 FString::Printf(
                     TEXT("生成失敗：%s"),
-                    * ErrorMessage
+                    *ErrorMessage
                 )
             )
         );
+
         return FReply::Handled();
     }
-    
-    // 生成したMIの参照をSlot情報に保存
-    CurrentSlotInfos[SlotIndex].GeneratedMaterialInstancePath =
+
+
+    // ==========================================
+    // 生成したMIの参照を保存
+    // ==========================================
+
+    SlotInfo.GeneratedMaterialInstancePath =
         FSoftObjectPath(CreatedInstance->GetPathName());
-    
-    // 結果を表示
-    StatusText->SetText(
-        FText::FromString(
-            FString::Printf(
-                TEXT("生成成功：%s"),
-                *CreatedInstance->GetName()
-            )
-        )    
+
+
+    // ==========================================
+    // 結果表示
+    // ==========================================
+
+    const FString SuccessMessage = FString::Printf(
+        TEXT(
+            "生成成功：%s\n"
+            "Master Material：%s"
+        ),
+        *CreatedInstance->GetName(),
+        *MasterMaterialName
     );
+
+    StatusText->SetText(
+        FText::FromString(SuccessMessage)
+    );
+
     return FReply::Handled();
 }
 

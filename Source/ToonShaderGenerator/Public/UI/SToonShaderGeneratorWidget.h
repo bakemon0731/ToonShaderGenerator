@@ -67,9 +67,6 @@ private:
 		EToonMaterialType MaterialType
 	) const;
 	
-	// 選択されたMaster Materialの参照
-	FSoftObjectPath SelectedMasterMaterialPath;
-
 	// Master Materialの表示
 	TSharedPtr<STextBlock> MasterMaterialText;
 
