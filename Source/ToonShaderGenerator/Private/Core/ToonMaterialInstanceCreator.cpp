@@ -61,6 +61,7 @@ FToonMaterialInstanceCreator::Create(
 
     UTexture2D* FaceSDFTexture = nullptr;
     UTexture2D* HairFlowMapTexture = nullptr;
+    UTexture2D* LoadedHairFlowMap = nullptr;
 
 
     if (Settings.MaterialType == EToonMaterialType::Face)
@@ -87,22 +88,29 @@ FToonMaterialInstanceCreator::Create(
     }
 
 
-    if (Settings.MaterialType == EToonMaterialType::Hair)
+    if (Settings.MaterialType == EToonMaterialType::Hair
+    && Settings.bUseHairFlowMap)
     {
-        // Flow Mapが指定されている場合だけロード
-        if (!Settings.HairFlowMapTexturePath.IsNull())
+        if (Settings.HairFlowMapTexturePath.IsNull())
         {
-            HairFlowMapTexture = Cast<UTexture2D>(
-                Settings.HairFlowMapTexturePath.TryLoad()
+            OutErrorMessage = TEXT(
+                "Flow Mapが有効ですが、テクスチャが設定されていません。"
             );
 
-            if (!IsValid(HairFlowMapTexture))
-            {
-                OutErrorMessage =
-                    TEXT("Hair Flow Mapを読み込めません。");
+            return nullptr;
+        }
 
-                return nullptr;
-            }
+        LoadedHairFlowMap = Cast<UTexture2D>(
+            Settings.HairFlowMapTexturePath.TryLoad()
+        );
+
+        if (!LoadedHairFlowMap)
+        {
+            OutErrorMessage = TEXT(
+                "Hair Flow Mapの読み込みに失敗しました。"
+            );
+
+            return nullptr;
         }
     }
 
@@ -255,45 +263,43 @@ FToonMaterialInstanceCreator::Create(
 
     case EToonMaterialType::Hair:
 
-        // 髪の基本色
+        // Base Color
         CreatedInstance->SetVectorParameterValueEditorOnly(
-            FMaterialParameterInfo(FName(TEXT("HairBaseColor"))),
+            FMaterialParameterInfo(TEXT("HairBaseColor")),
             Settings.Basic.BaseColor
         );
 
         // Roughness
         CreatedInstance->SetScalarParameterValueEditorOnly(
-            FMaterialParameterInfo(FName(TEXT("HairRoughness"))),
-            Settings.HairRoughness
+            FMaterialParameterInfo(TEXT("HairRoughness")),
+            FMath::Clamp(Settings.HairRoughness, 0.0f, 1.0f)
         );
 
         // Specular
         CreatedInstance->SetScalarParameterValueEditorOnly(
-            FMaterialParameterInfo(FName(TEXT("HairSpecular"))),
-            Settings.HairSpecular
+            FMaterialParameterInfo(TEXT("HairSpecular")),
+            FMath::Clamp(Settings.HairSpecular, 0.0f, 1.0f)
         );
 
         // Anisotropy
         CreatedInstance->SetScalarParameterValueEditorOnly(
-            FMaterialParameterInfo(FName(TEXT("HairAnisotropy"))),
-            Settings.HairAnisotropy
+            FMaterialParameterInfo(TEXT("HairAnisotropy")),
+            FMath::Clamp(Settings.HairAnisotropy, 0.0f, 1.0f)
         );
 
-        // Flow Mapが存在する場合だけ設定
-        if (IsValid(HairFlowMapTexture))
+        // Flow Map Texture
+        if (Settings.bUseHairFlowMap && LoadedHairFlowMap)
         {
             CreatedInstance->SetTextureParameterValueEditorOnly(
-                FMaterialParameterInfo(FName(TEXT("HairFlowMap"))),
-                HairFlowMapTexture
+                FMaterialParameterInfo(TEXT("HairFlowMap")),
+                LoadedHairFlowMap
             );
         }
 
         // Static Switch
-        // Flow Mapあり：True
-        // Flow Mapなし：False
         CreatedInstance->SetStaticSwitchParameterValueEditorOnly(
-            FMaterialParameterInfo(FName(TEXT("UseHairFlowMap"))),
-            IsValid(HairFlowMapTexture)
+            FMaterialParameterInfo(TEXT("UseHairFlowMap")),
+            Settings.bUseHairFlowMap
         );
 
         break;

@@ -29,6 +29,8 @@
 #include "Widgets/Colors/SColorPicker.h"
 #include "Widgets/Input/SSlider.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Input/SSpinBox.h"
+#include "Widgets/Input/SCheckBox.h"
 
 
 // ==================================================
@@ -310,6 +312,127 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
                 )    
             ]
 
+            // ========================================
+            // Hair Shader Settings
+            // ========================================
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 12.0f, 0.0f, 4.0f)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("ヘアシェーダー設定")))
+            ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 4.0f)
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Roughness")))
+                ]
+
+                + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                [
+                    SNew(SSpinBox<float>)
+                    .MinValue(0.0f)
+                    .MaxValue(1.0f)
+                    .Delta(0.01f)
+                    .Value(HairRoughness)
+                    .OnValueChanged(
+                        this,
+                        &SToonShaderGeneratorWidget::HandleHairRoughnessChanged
+                    )    
+                ]
+            ]
+
+            +SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 4.0f)
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Specular")))
+                ]
+
+                + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                [
+                    SNew(SSpinBox<float>)
+                    .MinValue(0.0f)
+                    .MaxValue(1.0f)
+                    .Delta(0.01f)
+                    .Value(HairSpecular)
+                    .OnValueChanged(
+                        this,
+                        &SToonShaderGeneratorWidget::HandleHairSpecularChanged
+                    )    
+                ]
+            ]
+
+            +SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 4.0f)
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Anisotropy")))
+                ]
+
+                + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                [
+                    SNew(SSpinBox<float>)
+                    .MinValue(0.0f)
+                    .MaxValue(1.0f)
+                    .Delta(0.01f)
+                    .Value(HairAnisotropy)
+                    .OnValueChanged(
+                        this,
+                        &SToonShaderGeneratorWidget::HandleHairAnisotropyChanged
+                    )    
+                ]
+            ]
+
+            +SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 6.0f)
+            [
+                SNew(SCheckBox)
+
+                .IsChecked_Lambda([this]()
+                {
+                    return bUseHairFlowMap
+                        ? ECheckBoxState::Checked
+                        : ECheckBoxState::Unchecked;
+                })
+
+                .OnCheckStateChanged_Lambda([this](ECheckBoxState NewState)
+                {
+                    bUseHairFlowMap = (NewState == ECheckBoxState::Checked);
+                })
+
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Flow Mapを使用する")))
+                ]
+            ]
 
             // 情報取得ボタン
             + SVerticalBox::Slot()
@@ -1256,6 +1379,14 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
 
     // 基本カラー設定
     Settings.Basic = BasicMaterialSettings;
+    
+    // Hair Shader Settings
+    Settings.HairRoughness = HairRoughness;
+    Settings.HairSpecular = HairSpecular;
+    Settings.HairAnisotropy = HairAnisotropy;
+
+    Settings.bUseHairFlowMap = bUseHairFlowMap;
+    Settings.HairFlowMapTexturePath = SlotInfo.HairFlowMapTexturePath;
 
     // Face SDF
     Settings.FaceSDFTexturePath =
@@ -1377,12 +1508,6 @@ FReply SToonShaderGeneratorWidget::HandleOpenColorPicker(bool bEditBaseColor)
     OpenColorPicker(PickerArgs);
 
     return FReply::Handled();    
-}
-
-void SToonShaderGeneratorWidget::HandleShadowThresholdChanged(float NewValue)
-{
-    // 0.0 ～ 1.0の範囲に制限
-    BasicMaterialSettings.ShadowThreshold = FMath::Clamp(NewValue, 0.0f, 1.0f);
 }
 
 FReply SToonShaderGeneratorWidget::HandleApplyMaterialInstanceClicked(int32 SlotIndex)
@@ -1811,5 +1936,26 @@ void SToonShaderGeneratorWidget::DisplayValidationResults(const TArray<FToonVali
             )
         );
     }
+}
+
+void SToonShaderGeneratorWidget::HandleShadowThresholdChanged(float NewValue)
+{
+    // 0.0 ～ 1.0の範囲に制限
+    BasicMaterialSettings.ShadowThreshold = FMath::Clamp(NewValue, 0.0f, 1.0f);
+}
+
+void SToonShaderGeneratorWidget::HandleHairRoughnessChanged(float NewValue)
+{
+    HairRoughness = FMath::Clamp(NewValue, 0.0f, 1.0f);
+}
+
+void SToonShaderGeneratorWidget::HandleHairSpecularChanged(float NewValue)
+{
+    HairSpecular = FMath::Clamp(NewValue, 0.0f, 1.0f);
+}
+
+void SToonShaderGeneratorWidget::HandleHairAnisotropyChanged(float NewValue)
+{
+    HairAnisotropy = FMath::Clamp(NewValue, 0.0f, 1.0f);
 }
 

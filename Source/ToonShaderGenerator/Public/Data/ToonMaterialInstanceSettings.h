@@ -31,4 +31,7 @@ struct FToonMaterialInstanceSettings
 	float HairRoughness = 0.35f;
 	
 	float HairSpecular = 0.5f;
+	
+	// Flow Mapの有効・無効
+	bool bUseHairFlowMap = false;
 };

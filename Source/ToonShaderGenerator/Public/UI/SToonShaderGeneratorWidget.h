@@ -28,6 +28,12 @@ public:
 	// 基本Toon Shaderの設定
 	FToonBasicMaterialSettings BasicMaterialSettings;
 	
+	// Hair Shader Settings
+	float HairRoughness = 0.35f;
+	float HairSpecular = 0.5f;
+	float HairAnisotropy = 0.8f;
+	bool bUseHairFlowMap = false;
+	
 	// Material名表示WidgetをSlotごとに保持
 	TMap<int32, TSharedPtr<STextBlock>>  MaterialNameTextBlocks;
 	
@@ -129,4 +135,10 @@ private:
 
 	// 検証結果をUIに表示
 	void DisplayValidationResults(const TArray<FToonValidationIssue>& Issues);
+	
+private:
+	
+	void HandleHairRoughnessChanged(float NewValue);
+	void HandleHairSpecularChanged(float NewValue);
+	void HandleHairAnisotropyChanged(float NewValue);
 };
