@@ -141,4 +141,8 @@ private:
 	void HandleHairRoughnessChanged(float NewValue);
 	void HandleHairSpecularChanged(float NewValue);
 	void HandleHairAnisotropyChanged(float NewValue);
+	
+private:
+	// Face Mesh Analysis
+	FReply HandleAnalyzeFaceSlotsClicked();
 };

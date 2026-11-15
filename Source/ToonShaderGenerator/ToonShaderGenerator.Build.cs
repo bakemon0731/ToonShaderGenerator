@@ -46,7 +46,10 @@ public class ToonShaderGenerator : ModuleRules
 				"PropertyEditor",
 				"AssetRegistry",
 				"AssetTools",
-				"AppFramework"
+				"AppFramework",
+				"MeshDescription",
+				"StaticMeshDescription",
+				"SkeletalMeshDescription"
 			}
 			);
 		

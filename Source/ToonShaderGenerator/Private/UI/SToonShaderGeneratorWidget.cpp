@@ -6,6 +6,7 @@
 #include "Core/ToonMeshMaterialAssignmentService.h"
 #include "Core/ToonTextureValidator.h"
 #include "Core/ToonMasterMaterialRegistry.h"
+#include "Core/ToonFaceMeshAnalyzer.h"
 
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceConstant.h"
@@ -446,6 +447,25 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
                     &SToonShaderGeneratorWidget::HandleInspectMeshClicked
                 )
             ]
+
+            // ==========================================
+            // Face Mesh Analyzer Button
+            // ==========================================
+
+            +SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, 12.0f)
+            [
+                SNew(SButton)
+
+                .Text(FText::FromString(TEXT("Face Slotのメッシュ解析")))
+
+                .OnClicked(
+                    this,
+                    &SToonShaderGeneratorWidget::HandleAnalyzeFaceSlotsClicked
+                )    
+            ]
+
 
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -1967,5 +1987,201 @@ void SToonShaderGeneratorWidget::HandleHairSpecularChanged(float NewValue)
 void SToonShaderGeneratorWidget::HandleHairAnisotropyChanged(float NewValue)
 {
     HairAnisotropy = FMath::Clamp(NewValue, 0.0f, 1.0f);
+}
+
+// ==================================================
+// Face Mesh Analysis
+// ==================================================
+
+FReply SToonShaderGeneratorWidget::HandleAnalyzeFaceSlotsClicked()
+{
+    // ==========================================
+    // Mesh取得確認
+    // ==========================================
+
+    if (SelectedSkeletalMeshPath.IsNull())
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("エラー：Skeletal Meshを選択してください。")
+            )
+        );
+
+        return FReply::Handled();
+    }
+
+    if (CurrentSlotInfos.IsEmpty())
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("先にMaterial Slot情報を取得してください。")
+            )
+        );
+
+        return FReply::Handled();
+    }
+
+
+    // ==========================================
+    // Skeletal Mesh Load
+    // ==========================================
+
+    USkeletalMesh* SkeletalMesh =
+        Cast<USkeletalMesh>(
+            SelectedSkeletalMeshPath.TryLoad()
+        );
+
+    if (!IsValid(SkeletalMesh))
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("Skeletal Meshを読み込めません。")
+            )
+        );
+
+        return FReply::Handled();
+    }
+
+
+    // ==========================================
+    // Face Slot Analysis
+    // ==========================================
+
+    TArray<FString> ReportLines;
+
+    int32 FaceSlotCount = 0;
+    int32 SuccessCount = 0;
+
+    for (const FToonMaterialSlotInfo& SlotInfo : CurrentSlotInfos)
+    {
+        // Face用途のSlotだけ解析
+        if (SlotInfo.MaterialType != EToonMaterialType::Face)
+        {
+            continue;
+        }
+
+        ++FaceSlotCount;
+
+        FToonFaceMeshAnalysisResult Result;
+
+        FString ErrorMessage;
+
+        const bool bSuccess =
+            FToonFaceMeshAnalyzer::AnalyzeMaterialSlot(
+                SkeletalMesh,
+                SlotInfo.SlotIndex,
+                0,
+                Result,
+                ErrorMessage
+            );
+
+        const FString SlotName =
+            SlotInfo.SlotName.ToString();
+
+        if (!bSuccess)
+        {
+            ReportLines.Add(
+                FString::Printf(
+                    TEXT(
+                        "[Slot %d] %s\n解析失敗：%s"
+                    ),
+                    SlotInfo.SlotIndex,
+                    *SlotName,
+                    *ErrorMessage
+                )
+            );
+
+            continue;
+        }
+
+        ++SuccessCount;
+
+        // UV範囲表示
+        const FString UVRange = FString::Printf(
+            TEXT(
+                "Min=(%.4f, %.4f)\n"
+                "Max=(%.4f, %.4f)"
+            ),
+            Result.UVMin.X,
+            Result.UVMin.Y,
+            Result.UVMax.X,
+            Result.UVMax.Y
+        );
+
+        const FString UVRangeState =
+            Result.bUVsWithinZeroToOne
+                ? TEXT("0～1の範囲内")
+                : TEXT("0～1の範囲外");
+
+        ReportLines.Add(
+            FString::Printf(
+                TEXT(
+                    "[Slot %d] %s\n"
+                    "LOD：%d\n"
+                    "Polygon Groups：%d\n"
+                    "Triangles：%d\n"
+                    "UV Channels：%d\n"
+                    "UV Samples：%d\n"
+                    "UV Range：\n%s\n"
+                    "UV判定：%s"
+                ),
+                Result.MaterialSlotIndex,
+                *SlotName,
+                Result.LODIndex,
+                Result.MatchingPolygonGroupCount,
+                Result.TriangleCount,
+                Result.UVChannelCount,
+                Result.UVSampleCount,
+                *UVRange,
+                *UVRangeState
+            )
+        );
+    }
+
+
+    // ==========================================
+    // Result Display
+    // ==========================================
+
+    if (FaceSlotCount == 0)
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT(
+                    "Face用途のMaterial Slotがありません。\n"
+                    "対象Slotの用途をFaceに設定してください。"
+                )
+            )
+        );
+
+        return FReply::Handled();
+    }
+
+    FString Report = FString::Printf(
+        TEXT(
+            "Face Mesh Analysis\n"
+            "成功：%d / %d\n\n"
+        ),
+        SuccessCount,
+        FaceSlotCount
+    );
+
+    Report += FString::Join(
+        ReportLines,
+        TEXT("\n\n")
+    );
+
+    FMessageDialog::Open(
+        EAppMsgType::Ok,
+        FText::FromString(Report)
+    );
+
+    StatusText->SetText(
+        FText::FromString(
+            TEXT("Face Slotのメッシュ解析が完了しました。")
+        )
+    );
+
+    return FReply::Handled();
 }
 
