@@ -10,6 +10,7 @@ public:
 	// Material Slotのテクスチャを検証
 	static void ValidateSlot(
 		const FToonMaterialSlotInfo& SlotInfo,
-		TArray<FToonValidationIssue>& OutIssues
+		TArray<FToonValidationIssue>& OutIssues,
+		bool bUseHairFlowMap
 	);	
 };

@@ -176,7 +176,8 @@ namespace
 
 void FToonTextureValidator::ValidateSlot(
     const FToonMaterialSlotInfo& SlotInfo,
-    TArray<FToonValidationIssue>& OutIssues)
+    TArray<FToonValidationIssue>& OutIssues,
+    bool bUseHairFlowMap)
 {
     switch (SlotInfo.MaterialType)
     {
@@ -211,7 +212,7 @@ void FToonTextureValidator::ValidateSlot(
             SlotInfo,
             TEXT("Hair Flow Map"),
             SlotInfo.HairFlowMapTexturePath,
-            true,
+            bUseHairFlowMap,
             false,
             true,
             TC_Normalmap,
@@ -232,7 +233,7 @@ void FToonTextureValidator::ValidateSlot(
             SlotInfo,
             TEXT("Skin Base Color"),
             SlotInfo.SkinBaseColorTexturePath,
-            false,
+            true,
             true,
             false,
             TC_Default,

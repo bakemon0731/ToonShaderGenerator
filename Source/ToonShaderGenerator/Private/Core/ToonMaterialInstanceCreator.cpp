@@ -63,6 +63,9 @@ FToonMaterialInstanceCreator::Create(
     UTexture2D* HairFlowMapTexture = nullptr;
     UTexture2D* LoadedHairFlowMap = nullptr;
     UTexture2D* LoadedSkinBaseColorTexture = nullptr;
+    UTexture2D* LoadedClothingBaseColorTexture = nullptr;
+    UTexture2D* LoadedClothingNormalTexture = nullptr;
+    UTexture2D* LoadedClothingORMTexture = nullptr;
 
 
     if (Settings.MaterialType == EToonMaterialType::Face)
@@ -137,6 +140,66 @@ FToonMaterialInstanceCreator::Create(
             );
 
             return nullptr;
+        }
+    }
+    
+    // ==========================================
+    // Clothing Texture Load
+    // ==========================================
+    if (Settings.MaterialType == EToonMaterialType::Clothing)
+    {
+        // Base Color
+        if (!Settings.ClothingBaseColorTexturePath.IsNull())
+        {
+            LoadedClothingBaseColorTexture =
+                Cast<UTexture2D>(
+                    Settings.ClothingBaseColorTexturePath.TryLoad()
+                );
+
+            if (!IsValid(LoadedClothingBaseColorTexture))
+            {
+                OutErrorMessage = TEXT(
+                    "Clothing BaseColor Textureの読み込みに失敗しました。"
+                );
+
+                return nullptr;
+            }
+        }
+
+        // Normal
+        if (!Settings.ClothingNormalTexturePath.IsNull())
+        {
+            LoadedClothingNormalTexture =
+                Cast<UTexture2D>(
+                    Settings.ClothingNormalTexturePath.TryLoad()
+                );
+
+            if (!IsValid(LoadedClothingNormalTexture))
+            {
+                OutErrorMessage = TEXT(
+                    "Clothing Normal Textureの読み込みに失敗しました。"
+                );
+
+                return nullptr;
+            }
+        }
+
+        // ORM
+        if (!Settings.ClothingORMTexturePath.IsNull())
+        {
+            LoadedClothingORMTexture =
+                Cast<UTexture2D>(
+                    Settings.ClothingORMTexturePath.TryLoad()
+                );
+
+            if (!IsValid(LoadedClothingORMTexture))
+            {
+                OutErrorMessage = TEXT(
+                    "Clothing ORM Textureの読み込みに失敗しました。"
+                );
+
+                return nullptr;
+            }
         }
     }
 
@@ -331,7 +394,7 @@ FToonMaterialInstanceCreator::Create(
         break;
 
     // ==========================================
-    // Hair Shader
+    // Skin Shader
     // ========================================== 
     case EToonMaterialType::Skin:
         
@@ -364,7 +427,83 @@ FToonMaterialInstanceCreator::Create(
         );
         
         break;
+        
+    // ==========================================
+    // Clothing Shader
+    // ==========================================
+    case EToonMaterialType::Clothing:
+        
+        // Base Color Texture
+        if (IsValid(LoadedClothingBaseColorTexture))
+        {
+            CreatedInstance->SetTextureParameterValueEditorOnly(
+                FMaterialParameterInfo(
+                    FName(TEXT("ClothingBaseColorTexture"))
+                ),
+                LoadedClothingBaseColorTexture
+            );
+        }
 
+        // Normal Texture
+        if (IsValid(LoadedClothingNormalTexture))
+        {
+            CreatedInstance->SetTextureParameterValueEditorOnly(
+                FMaterialParameterInfo(
+                    FName(TEXT("ClothingNormalTexture"))
+                ),
+                LoadedClothingNormalTexture
+            );
+        }
+        
+        // Normal MapのStatic Switch
+        CreatedInstance->SetStaticSwitchParameterValueEditorOnly(
+            FMaterialParameterInfo(
+                FName(TEXT("UseClothingNormalMap"))
+            ),
+            IsValid(LoadedClothingNormalTexture)
+        );
+        
+        // ORM Texture
+        if (IsValid(LoadedClothingORMTexture))
+        {
+            CreatedInstance->SetTextureParameterValueEditorOnly(
+                FMaterialParameterInfo(
+                    FName(TEXT("ClothingORMTexture"))
+                ),
+                LoadedClothingORMTexture
+            );
+        }
+        
+        // Clothing Tint
+        CreatedInstance->SetVectorParameterValueEditorOnly(
+            FMaterialParameterInfo(
+                FName(TEXT("ClothingTint"))
+            ),
+            Settings.Basic.BaseColor
+        );
+        
+        // Shadow Color
+        CreatedInstance->SetVectorParameterValueEditorOnly(
+            FMaterialParameterInfo(
+                FName(TEXT("ClothingShadowColor"))
+            ),
+            Settings.Basic.ShadowColor
+        );
+        
+        // Shadow Threshold
+        CreatedInstance->SetScalarParameterValueEditorOnly(
+            FMaterialParameterInfo(
+                FName(TEXT("ClothingShadowThreshold"))
+            ),
+            FMath::Clamp(
+                Settings.Basic.ShadowThreshold,
+                0.0f,
+                1.0f
+            )
+        );
+        
+        break;
+    
     default:
 
         OutErrorMessage =

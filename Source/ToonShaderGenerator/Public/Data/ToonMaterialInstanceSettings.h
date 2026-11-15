@@ -38,5 +38,16 @@ struct FToonMaterialInstanceSettings
 	// ==========================================
 	// Skin Shader
 	// ==========================================
+	
 	FSoftObjectPath SkinBaseColorTexturePath;
+	
+	// ==========================================
+	// Clothing Shader
+	// ==========================================
+	
+	FSoftObjectPath ClothingBaseColorTexturePath;
+
+	FSoftObjectPath ClothingNormalTexturePath;
+
+	FSoftObjectPath ClothingORMTexturePath;
 };

@@ -1391,14 +1391,20 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
     // Face SDF
     Settings.FaceSDFTexturePath =
         SlotInfo.FaceSDFTexturePath;
-
-    // Hair Flow Map
-    Settings.HairFlowMapTexturePath =
-        SlotInfo.HairFlowMapTexturePath;
     
     // Skin Base
     Settings.SkinBaseColorTexturePath =
         SlotInfo.SkinBaseColorTexturePath;
+    
+    // Clothing Textures
+    Settings.ClothingBaseColorTexturePath =
+        SlotInfo.ClothingBaseColorTexturePath;
+
+    Settings.ClothingNormalTexturePath =
+        SlotInfo.ClothingNormalTexturePath;
+
+    Settings.ClothingORMTexturePath =
+        SlotInfo.ClothingORMTexturePath;
 
     // ==========================================
     // アセット名を決定
@@ -1829,7 +1835,8 @@ FReply SToonShaderGeneratorWidget::HandleValidateTexturesClicked()
     {
         FToonTextureValidator::ValidateSlot(
             SlotInfo,
-            ValidationIssues
+            ValidationIssues,
+            bUseHairFlowMap
         );    
     }
     
