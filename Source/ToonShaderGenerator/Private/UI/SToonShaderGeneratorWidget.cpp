@@ -8,6 +8,7 @@
 #include "Core/ToonMasterMaterialRegistry.h"
 #include "Core/ToonFaceMeshAnalyzer.h"
 #include "Core/ToonFaceUVRasterizer.h"
+#include "Core/ToonFacePreviewTextureImporter.h"
 
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceConstant.h"
@@ -18,7 +19,9 @@
 #include "Engine/Texture2D.h"
 #include "PropertyCustomizationHelpers.h"
 #include "Templates/SharedPointer.h"
+
 #include "Misc/MessageDialog.h"
+#include "Misc/Paths.h"
 
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
@@ -487,6 +490,24 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
                     this,
                     &SToonShaderGeneratorWidget::HandleGenerateFaceNormalPreviewClicked
                 )    
+            ]
+
+            // ==========================================
+            // Face Normal MapをTexture Assetに保存
+            // ==========================================
+            +SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, 12.0f)
+            [
+                SNew(SButton)
+                .Text(
+                    FText::FromString(
+                        TEXT("Face Normal MapをTexture Assetに保存")
+                    )
+                )
+                .OnClicked(
+                    this,
+                    &SToonShaderGeneratorWidget::HandleImportFaceNormalPreviewClicked)
             ]
 
             + SVerticalBox::Slot()
@@ -2377,3 +2398,124 @@ FReply SToonShaderGeneratorWidget::HandleGenerateFaceNormalPreviewClicked()
     return FReply::Handled();
 }
 
+// ==================================================
+// Import Face Normal Preview
+// ==================================================
+
+FReply SToonShaderGeneratorWidget::HandleImportFaceNormalPreviewClicked()
+{
+    if (CurrentSlotInfos.IsEmpty())
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("先にMaterial Slot情報を取得してください。")
+            )
+        );
+
+        return FReply::Handled();
+    }
+
+    const FString PreviewDirectory =
+        FPaths::Combine(
+            FPaths::ProjectSavedDir(),
+            TEXT("ToonShaderGenerator")
+        );
+
+    int32 FaceSlotCount = 0;
+    int32 SuccessCount = 0;
+
+    TArray<FString> ReportLines;
+
+    for (const FToonMaterialSlotInfo& SlotInfo : CurrentSlotInfos)
+    {
+        if (SlotInfo.MaterialType != EToonMaterialType::Face)
+        {
+            continue;
+        }
+
+        ++FaceSlotCount;
+
+        const FString SourcePath =
+            FPaths::Combine(
+                PreviewDirectory,
+                FString::Printf(
+                    TEXT("FaceNormalPreview_Slot_%d.png"),
+                    SlotInfo.SlotIndex
+                )
+            );
+
+        FString AssetPath;
+        FString ErrorMessage;
+
+        const bool bSuccess =
+            FToonFacePreviewTextureImporter::ImportNormalPreview(
+                SourcePath,
+                AssetPath,
+                ErrorMessage
+            );
+
+        if (bSuccess)
+        {
+            ++SuccessCount;
+
+            ReportLines.Add(
+                FString::Printf(
+                    TEXT(
+                        "[Slot %d] 成功\n%s"
+                    ),
+                    SlotInfo.SlotIndex,
+                    *AssetPath
+                )
+            );
+        }
+        else
+        {
+            ReportLines.Add(
+                FString::Printf(
+                    TEXT(
+                        "[Slot %d] 失敗\n%s"
+                    ),
+                    SlotInfo.SlotIndex,
+                    *ErrorMessage
+                )
+            );
+        }
+    }
+
+    if (FaceSlotCount == 0)
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("Material TypeがFaceのSlotがありません。")
+            )
+        );
+
+        return FReply::Handled();
+    }
+
+    FString Report = FString::Printf(
+        TEXT(
+            "Face Normal Texture Import\n成功：%d / %d\n\n"
+        ),
+        SuccessCount,
+        FaceSlotCount
+    );
+
+    Report += FString::Join(
+        ReportLines,
+        TEXT("\n\n")
+    );
+
+    FMessageDialog::Open(
+        EAppMsgType::Ok,
+        FText::FromString(Report)
+    );
+
+    StatusText->SetText(
+        FText::FromString(
+            TEXT("Face Normal Textureのインポートが完了しました。")
+        )
+    );
+
+    return FReply::Handled();
+}

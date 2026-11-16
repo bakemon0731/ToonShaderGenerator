@@ -147,4 +147,6 @@ private:
 	FReply HandleAnalyzeFaceSlotsClicked();
 	
 	FReply HandleGenerateFaceNormalPreviewClicked();
+	
+	FReply HandleImportFaceNormalPreviewClicked();
 };
