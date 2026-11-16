@@ -1455,6 +1455,9 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
     Settings.FaceSDFTexturePath =
         SlotInfo.FaceSDFTexturePath;
     
+    Settings.FaceNormalDirectionTexturePath =
+        SlotInfo.FaceNormalDirectionTexturePath;
+    
     // Skin Base
     Settings.SkinBaseColorTexturePath =
         SlotInfo.SkinBaseColorTexturePath;
@@ -2285,7 +2288,7 @@ FReply SToonShaderGeneratorWidget::HandleGenerateFaceNormalPreviewClicked()
 
     TArray<FString> ReportLines;
 
-    constexpr int32 PreviewResolution = 1024;
+    constexpr int32 PreviewResolution = 2048;
 
     for (const FToonMaterialSlotInfo& SlotInfo : CurrentSlotInfos)
     {
@@ -2337,7 +2340,8 @@ FReply SToonShaderGeneratorWidget::HandleGenerateFaceNormalPreviewClicked()
                     "Rasterized Pixels：%d\n"
                     "Overlapped Pixels：%d\n\n"
                     "Normal Preview：\n%s\n\n"
-                    "Coverage Preview：\n%s"
+                    "Coverage Preview：\n%s\n\n"
+                    "SDF Preview：\n%s"
                 ),
                 SlotInfo.SlotIndex,
                 *SlotInfo.SlotName.ToString(),
@@ -2347,7 +2351,8 @@ FReply SToonShaderGeneratorWidget::HandleGenerateFaceNormalPreviewClicked()
                 Result.RasterizedPixelCount,
                 Result.OverlappedPixelCount,
                 *Result.NormalPreviewPath,
-                *Result.CoveragePreviewPath
+                *Result.CoveragePreviewPath,
+                *Result.SDFPreviewPath
             )
         );
     }
@@ -2426,7 +2431,7 @@ FReply SToonShaderGeneratorWidget::HandleImportFaceNormalPreviewClicked()
 
     TArray<FString> ReportLines;
 
-    for (const FToonMaterialSlotInfo& SlotInfo : CurrentSlotInfos)
+    for (FToonMaterialSlotInfo& SlotInfo : CurrentSlotInfos)
     {
         if (SlotInfo.MaterialType != EToonMaterialType::Face)
         {
@@ -2456,7 +2461,53 @@ FReply SToonShaderGeneratorWidget::HandleImportFaceNormalPreviewClicked()
 
         if (bSuccess)
         {
+            SlotInfo.FaceNormalDirectionTexturePath =
+                FSoftObjectPath(AssetPath);
+
             ++SuccessCount;
+
+            // Face SDF (R=右から光 / G=左から光) があれば一緒にインポート
+            const FString SDFSourcePath =
+                FPaths::Combine(
+                    PreviewDirectory,
+                    FString::Printf(
+                        TEXT("FaceSDF_Slot_%d.png"),
+                        SlotInfo.SlotIndex
+                    )
+                );
+
+            if (FPaths::FileExists(SDFSourcePath))
+            {
+                FString SDFAssetPath;
+                FString SDFErrorMessage;
+
+                if (FToonFacePreviewTextureImporter::ImportFaceSDF(
+                    SDFSourcePath,
+                    SDFAssetPath,
+                    SDFErrorMessage))
+                {
+                    SlotInfo.FaceSDFTexturePath =
+                        FSoftObjectPath(SDFAssetPath);
+
+                    ReportLines.Add(
+                        FString::Printf(
+                            TEXT("[Slot %d] SDF成功\n%s"),
+                            SlotInfo.SlotIndex,
+                            *SDFAssetPath
+                        )
+                    );
+                }
+                else
+                {
+                    ReportLines.Add(
+                        FString::Printf(
+                            TEXT("[Slot %d] SDF失敗\n%s"),
+                            SlotInfo.SlotIndex,
+                            *SDFErrorMessage
+                        )
+                    );
+                }
+            }
 
             ReportLines.Add(
                 FString::Printf(

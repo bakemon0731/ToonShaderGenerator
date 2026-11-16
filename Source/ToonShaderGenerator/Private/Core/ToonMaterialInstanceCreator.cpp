@@ -26,8 +26,9 @@ FToonMaterialInstanceCreator::Create(
 {
     OutErrorMessage.Reset();
 
+
     // ==========================================
-    // 入力検証
+    // 1. 入力検証
     // ==========================================
 
     if (!IsValid(ParentMaterial))
@@ -56,43 +57,93 @@ FToonMaterialInstanceCreator::Create(
 
 
     // ==========================================
-    //  必要なTextureをロード
+    // 2. Texture変数
     // ==========================================
 
     UTexture2D* FaceSDFTexture = nullptr;
-    UTexture2D* HairFlowMapTexture = nullptr;
+
+    UTexture2D* FaceNormalDirectionTexture = nullptr;
+
     UTexture2D* LoadedHairFlowMap = nullptr;
+
     UTexture2D* LoadedSkinBaseColorTexture = nullptr;
+
     UTexture2D* LoadedClothingBaseColorTexture = nullptr;
+
     UTexture2D* LoadedClothingNormalTexture = nullptr;
+
     UTexture2D* LoadedClothingORMTexture = nullptr;
 
 
+    // ==========================================
+    // 3. Face Texture Load
+    // ==========================================
+
     if (Settings.MaterialType == EToonMaterialType::Face)
     {
-        if (Settings.FaceSDFTexturePath.IsNull())
-        {
-            OutErrorMessage =
-                TEXT("Face SDF Textureが指定されていません。");
+        // --------------------------------------
+        // Face SDF
+        // --------------------------------------
 
-            return nullptr;
+        if (!Settings.FaceSDFTexturePath.IsNull())
+        {
+            FaceSDFTexture = Cast<UTexture2D>(
+                Settings.FaceSDFTexturePath.TryLoad()
+            );
+
+            if (!IsValid(FaceSDFTexture))
+            {
+                OutErrorMessage =
+                    TEXT("Face SDF Textureを読み込めません。");
+
+                return nullptr;
+            }
         }
 
-        FaceSDFTexture = Cast<UTexture2D>(
-            Settings.FaceSDFTexturePath.TryLoad()
-        );
 
-        if (!IsValid(FaceSDFTexture))
+        // --------------------------------------
+        // Face Normal Direction Map
+        // --------------------------------------
+
+        if (!Settings.FaceNormalDirectionTexturePath.IsNull())
         {
-            OutErrorMessage =
-                TEXT("Face SDF Textureを読み込めません。");
+            FaceNormalDirectionTexture =
+                Cast<UTexture2D>(
+                    Settings.FaceNormalDirectionTexturePath.TryLoad()
+                );
+
+            if (!IsValid(FaceNormalDirectionTexture))
+            {
+                OutErrorMessage =
+                    TEXT("Face Normal Direction Textureを読み込めません。");
+
+                return nullptr;
+            }
+        }
+
+
+        // --------------------------------------
+        // Required Texture Check
+        // --------------------------------------
+
+        if (!IsValid(FaceSDFTexture)
+            && !IsValid(FaceNormalDirectionTexture))
+        {
+            OutErrorMessage = TEXT(
+                "Face SDFまたはFace Normal Mapを設定してください。"
+            );
 
             return nullptr;
         }
     }
-    
+
+
+    // ==========================================
+    // 4. Hair Texture Load
+    // ==========================================
+
     if (Settings.MaterialType == EToonMaterialType::Hair
-    && Settings.bUseHairFlowMap)
+        && Settings.bUseHairFlowMap)
     {
         if (Settings.HairFlowMapTexturePath.IsNull())
         {
@@ -107,7 +158,7 @@ FToonMaterialInstanceCreator::Create(
             Settings.HairFlowMapTexturePath.TryLoad()
         );
 
-        if (!LoadedHairFlowMap)
+        if (!IsValid(LoadedHairFlowMap))
         {
             OutErrorMessage = TEXT(
                 "Hair Flow Mapの読み込みに失敗しました。"
@@ -116,7 +167,12 @@ FToonMaterialInstanceCreator::Create(
             return nullptr;
         }
     }
-    
+
+
+    // ==========================================
+    // 5. Skin Texture Load
+    // ==========================================
+
     if (Settings.MaterialType == EToonMaterialType::Skin)
     {
         if (Settings.SkinBaseColorTexturePath.IsNull())
@@ -133,7 +189,7 @@ FToonMaterialInstanceCreator::Create(
                 Settings.SkinBaseColorTexturePath.TryLoad()
             );
 
-        if (!LoadedSkinBaseColorTexture)
+        if (!IsValid(LoadedSkinBaseColorTexture))
         {
             OutErrorMessage = TEXT(
                 "Skin BaseColor Textureの読み込みに失敗しました。"
@@ -142,13 +198,18 @@ FToonMaterialInstanceCreator::Create(
             return nullptr;
         }
     }
-    
+
+
     // ==========================================
-    // Clothing Texture Load
+    // 6. Clothing Texture Load
     // ==========================================
+
     if (Settings.MaterialType == EToonMaterialType::Clothing)
     {
-        // Base Color
+        // --------------------------------------
+        // BaseColor
+        // --------------------------------------
+
         if (!Settings.ClothingBaseColorTexturePath.IsNull())
         {
             LoadedClothingBaseColorTexture =
@@ -166,7 +227,11 @@ FToonMaterialInstanceCreator::Create(
             }
         }
 
+
+        // --------------------------------------
         // Normal
+        // --------------------------------------
+
         if (!Settings.ClothingNormalTexturePath.IsNull())
         {
             LoadedClothingNormalTexture =
@@ -184,7 +249,11 @@ FToonMaterialInstanceCreator::Create(
             }
         }
 
+
+        // --------------------------------------
         // ORM
+        // --------------------------------------
+
         if (!Settings.ClothingORMTexturePath.IsNull())
         {
             LoadedClothingORMTexture =
@@ -205,7 +274,7 @@ FToonMaterialInstanceCreator::Create(
 
 
     // ==========================================
-    // Package Name検証
+    // 7. Package Name Validation
     // ==========================================
 
     const FString BasePackageName =
@@ -225,7 +294,7 @@ FToonMaterialInstanceCreator::Create(
 
 
     // ==========================================
-    // AssetTools取得
+    // 8. AssetTools取得
     // ==========================================
 
     IAssetTools& AssetTools =
@@ -233,7 +302,7 @@ FToonMaterialInstanceCreator::Create(
 
 
     // ==========================================
-    //  重複しない名前を作成
+    // 9. 重複しない名前を作成
     // ==========================================
 
     FString UniquePackageName;
@@ -253,7 +322,7 @@ FToonMaterialInstanceCreator::Create(
 
 
     // ==========================================
-    //  Factory生成
+    // 10. Factory生成
     // ==========================================
 
     UMaterialInstanceConstantFactoryNew* Factory =
@@ -263,7 +332,7 @@ FToonMaterialInstanceCreator::Create(
 
 
     // ==========================================
-    //  Material Instance生成
+    // 11. Material Instance生成
     // ==========================================
 
     UObject* CreatedObject = AssetTools.CreateAsset(
@@ -287,7 +356,7 @@ FToonMaterialInstanceCreator::Create(
 
 
     // ==========================================
-    //  Material Parameter設定
+    // 12. Material Parameter設定
     // ==========================================
 
     switch (Settings.MaterialType)
@@ -300,18 +369,28 @@ FToonMaterialInstanceCreator::Create(
     case EToonMaterialType::Other:
 
         CreatedInstance->SetVectorParameterValueEditorOnly(
-            FMaterialParameterInfo(FName(TEXT("BaseColor"))),
+            FMaterialParameterInfo(
+                FName(TEXT("BaseColor"))
+            ),
             Settings.Basic.BaseColor
         );
 
         CreatedInstance->SetVectorParameterValueEditorOnly(
-            FMaterialParameterInfo(FName(TEXT("ShadowColor"))),
+            FMaterialParameterInfo(
+                FName(TEXT("ShadowColor"))
+            ),
             Settings.Basic.ShadowColor
         );
 
         CreatedInstance->SetScalarParameterValueEditorOnly(
-            FMaterialParameterInfo(FName(TEXT("ShadowThreshold"))),
-            Settings.Basic.ShadowThreshold
+            FMaterialParameterInfo(
+                FName(TEXT("ShadowThreshold"))
+            ),
+            FMath::Clamp(
+                Settings.Basic.ShadowThreshold,
+                0.0f,
+                1.0f
+            )
         );
 
         break;
@@ -322,28 +401,102 @@ FToonMaterialInstanceCreator::Create(
     // ==========================================
 
     case EToonMaterialType::Face:
+        {
+            // --------------------------------------
+            // Basic Color
+            // --------------------------------------
 
-        CreatedInstance->SetVectorParameterValueEditorOnly(
-            FMaterialParameterInfo(FName(TEXT("BaseColor"))),
-            Settings.Basic.BaseColor
-        );
+            CreatedInstance->SetVectorParameterValueEditorOnly(
+                FMaterialParameterInfo(
+                    FName(TEXT("BaseColor"))
+                ),
+                Settings.Basic.BaseColor
+            );
 
-        CreatedInstance->SetVectorParameterValueEditorOnly(
-            FMaterialParameterInfo(FName(TEXT("ShadowColor"))),
-            Settings.Basic.ShadowColor
-        );
+            CreatedInstance->SetVectorParameterValueEditorOnly(
+                FMaterialParameterInfo(
+                    FName(TEXT("ShadowColor"))
+                ),
+                Settings.Basic.ShadowColor
+            );
 
-        CreatedInstance->SetTextureParameterValueEditorOnly(
-            FMaterialParameterInfo(FName(TEXT("FaceSDFTexture"))),
-            FaceSDFTexture
-        );
 
-        CreatedInstance->SetScalarParameterValueEditorOnly(
-            FMaterialParameterInfo(FName(TEXT("FaceBoundarySoftness"))),
-            Settings.FaceBoundarySoftness
-        );
+            // --------------------------------------
+            // Face SDF
+            // --------------------------------------
 
-        break;
+            if (IsValid(FaceSDFTexture))
+            {
+                CreatedInstance->SetTextureParameterValueEditorOnly(
+                    FMaterialParameterInfo(
+                        FName(TEXT("FaceSDFTexture"))
+                    ),
+                    FaceSDFTexture
+                );
+            }
+
+
+            CreatedInstance->SetScalarParameterValueEditorOnly(
+                FMaterialParameterInfo(
+                    FName(TEXT("FaceBoundarySoftness"))
+                ),
+                FMath::Max(
+                    Settings.FaceBoundarySoftness,
+                    0.0f
+                )
+            );
+
+
+            // --------------------------------------
+            // Face Normal Direction Map
+            // --------------------------------------
+
+            if (IsValid(FaceNormalDirectionTexture))
+            {
+                CreatedInstance->SetTextureParameterValueEditorOnly(
+                    FMaterialParameterInfo(
+                        FName(TEXT("FaceNormalDirectionTexture"))
+                    ),
+                    FaceNormalDirectionTexture
+                );
+            }
+
+
+            // --------------------------------------
+            // Shader Mode
+            // --------------------------------------
+
+            // SDFがある場合はSDF方式を優先(滑らかな影の境界になる)
+            // SDFが無く、Normal Mapだけある場合のみNormal Map方式を使う
+            const bool bUseFaceNormalMap =
+                IsValid(FaceNormalDirectionTexture)
+                && !IsValid(FaceSDFTexture);
+
+            CreatedInstance->SetStaticSwitchParameterValueEditorOnly(
+                FMaterialParameterInfo(
+                    FName(TEXT("UseFaceNormalDirectionMap"))
+                ),
+                bUseFaceNormalMap
+            );
+
+
+            // --------------------------------------
+            // Face Normal Shadow Threshold
+            // --------------------------------------
+
+            CreatedInstance->SetScalarParameterValueEditorOnly(
+                FMaterialParameterInfo(
+                    FName(TEXT("FaceNormalShadowThreshold"))
+                ),
+                FMath::Clamp(
+                    Settings.Basic.ShadowThreshold,
+                    0.0f,
+                    1.0f
+                )
+            );
+
+            break;
+        }    
 
 
     // ==========================================
@@ -354,86 +507,134 @@ FToonMaterialInstanceCreator::Create(
 
         // Base Color
         CreatedInstance->SetVectorParameterValueEditorOnly(
-            FMaterialParameterInfo(TEXT("HairBaseColor")),
+            FMaterialParameterInfo(
+                FName(TEXT("HairBaseColor"))
+            ),
             Settings.Basic.BaseColor
         );
 
+
         // Roughness
         CreatedInstance->SetScalarParameterValueEditorOnly(
-            FMaterialParameterInfo(TEXT("HairRoughness")),
-            FMath::Clamp(Settings.HairRoughness, 0.0f, 1.0f)
+            FMaterialParameterInfo(
+                FName(TEXT("HairRoughness"))
+            ),
+            FMath::Clamp(
+                Settings.HairRoughness,
+                0.0f,
+                1.0f
+            )
         );
+
 
         // Specular
         CreatedInstance->SetScalarParameterValueEditorOnly(
-            FMaterialParameterInfo(TEXT("HairSpecular")),
-            FMath::Clamp(Settings.HairSpecular, 0.0f, 1.0f)
+            FMaterialParameterInfo(
+                FName(TEXT("HairSpecular"))
+            ),
+            FMath::Clamp(
+                Settings.HairSpecular,
+                0.0f,
+                1.0f
+            )
         );
+
 
         // Anisotropy
         CreatedInstance->SetScalarParameterValueEditorOnly(
-            FMaterialParameterInfo(TEXT("HairAnisotropy")),
-            FMath::Clamp(Settings.HairAnisotropy, 0.0f, 1.0f)
+            FMaterialParameterInfo(
+                FName(TEXT("HairAnisotropy"))
+            ),
+            FMath::Clamp(
+                Settings.HairAnisotropy,
+                0.0f,
+                1.0f
+            )
         );
 
+
         // Flow Map Texture
-        if (Settings.bUseHairFlowMap && LoadedHairFlowMap)
+        if (Settings.bUseHairFlowMap
+            && IsValid(LoadedHairFlowMap))
         {
             CreatedInstance->SetTextureParameterValueEditorOnly(
-                FMaterialParameterInfo(TEXT("HairFlowMap")),
+                FMaterialParameterInfo(
+                    FName(TEXT("HairFlowMap"))
+                ),
                 LoadedHairFlowMap
             );
         }
 
+
         // Static Switch
         CreatedInstance->SetStaticSwitchParameterValueEditorOnly(
-            FMaterialParameterInfo(TEXT("UseHairFlowMap")),
+            FMaterialParameterInfo(
+                FName(TEXT("UseHairFlowMap"))
+            ),
             Settings.bUseHairFlowMap
         );
 
         break;
 
+
     // ==========================================
     // Skin Shader
-    // ========================================== 
+    // ==========================================
+
     case EToonMaterialType::Skin:
-        
+
         // Base Color Texture
         CreatedInstance->SetTextureParameterValueEditorOnly(
-            FMaterialParameterInfo(TEXT("SkinBaseColorTexture")),
+            FMaterialParameterInfo(
+                FName(TEXT("SkinBaseColorTexture"))
+            ),
             LoadedSkinBaseColorTexture
         );
 
+
         // Skin Tint
         CreatedInstance->SetVectorParameterValueEditorOnly(
-            FMaterialParameterInfo(TEXT("SkinTint")),
+            FMaterialParameterInfo(
+                FName(TEXT("SkinTint"))
+            ),
             Settings.Basic.BaseColor
         );
 
+
         // Shadow Color
         CreatedInstance->SetVectorParameterValueEditorOnly(
-            FMaterialParameterInfo(TEXT("SkinShadowColor")),
+            FMaterialParameterInfo(
+                FName(TEXT("SkinShadowColor"))
+            ),
             Settings.Basic.ShadowColor
         );
 
+
         // Shadow Threshold
         CreatedInstance->SetScalarParameterValueEditorOnly(
-            FMaterialParameterInfo(TEXT("SkinShadowThreshold")),
+            FMaterialParameterInfo(
+                FName(TEXT("SkinShadowThreshold"))
+            ),
             FMath::Clamp(
                 Settings.Basic.ShadowThreshold,
                 0.0f,
                 1.0f
             )
         );
-        
+
         break;
-        
+
+
     // ==========================================
     // Clothing Shader
     // ==========================================
+
     case EToonMaterialType::Clothing:
-        
+
+        // --------------------------------------
         // Base Color Texture
+        // --------------------------------------
+
         if (IsValid(LoadedClothingBaseColorTexture))
         {
             CreatedInstance->SetTextureParameterValueEditorOnly(
@@ -444,7 +645,11 @@ FToonMaterialInstanceCreator::Create(
             );
         }
 
+
+        // --------------------------------------
         // Normal Texture
+        // --------------------------------------
+
         if (IsValid(LoadedClothingNormalTexture))
         {
             CreatedInstance->SetTextureParameterValueEditorOnly(
@@ -454,16 +659,21 @@ FToonMaterialInstanceCreator::Create(
                 LoadedClothingNormalTexture
             );
         }
-        
-        // Normal MapのStatic Switch
+
+
+        // Normal Map Static Switch
         CreatedInstance->SetStaticSwitchParameterValueEditorOnly(
             FMaterialParameterInfo(
                 FName(TEXT("UseClothingNormalMap"))
             ),
             IsValid(LoadedClothingNormalTexture)
         );
-        
+
+
+        // --------------------------------------
         // ORM Texture
+        // --------------------------------------
+
         if (IsValid(LoadedClothingORMTexture))
         {
             CreatedInstance->SetTextureParameterValueEditorOnly(
@@ -473,24 +683,36 @@ FToonMaterialInstanceCreator::Create(
                 LoadedClothingORMTexture
             );
         }
-        
+
+
+        // --------------------------------------
         // Clothing Tint
+        // --------------------------------------
+
         CreatedInstance->SetVectorParameterValueEditorOnly(
             FMaterialParameterInfo(
                 FName(TEXT("ClothingTint"))
             ),
             Settings.Basic.BaseColor
         );
-        
+
+
+        // --------------------------------------
         // Shadow Color
+        // --------------------------------------
+
         CreatedInstance->SetVectorParameterValueEditorOnly(
             FMaterialParameterInfo(
                 FName(TEXT("ClothingShadowColor"))
             ),
             Settings.Basic.ShadowColor
         );
-        
+
+
+        // --------------------------------------
         // Shadow Threshold
+        // --------------------------------------
+
         CreatedInstance->SetScalarParameterValueEditorOnly(
             FMaterialParameterInfo(
                 FName(TEXT("ClothingShadowThreshold"))
@@ -501,9 +723,14 @@ FToonMaterialInstanceCreator::Create(
                 1.0f
             )
         );
-        
+
         break;
-    
+
+
+    // ==========================================
+    // Unsupported Material Type
+    // ==========================================
+
     default:
 
         OutErrorMessage =
@@ -514,7 +741,7 @@ FToonMaterialInstanceCreator::Create(
 
 
     // ==========================================
-    // 変更を反映
+    // 13. 変更を反映
     // ==========================================
 
     CreatedInstance->PostEditChange();

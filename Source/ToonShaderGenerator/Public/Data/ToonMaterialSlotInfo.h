@@ -44,6 +44,8 @@ struct FToonMaterialSlotInfo
 	
 	// Face用
 	FSoftObjectPath FaceSDFTexturePath;
+	// 自動生成したFace Normal Map
+	FSoftObjectPath FaceNormalDirectionTexturePath;
 	
 	// Hair用
 	FSoftObjectPath HairFlowMapTexturePath;

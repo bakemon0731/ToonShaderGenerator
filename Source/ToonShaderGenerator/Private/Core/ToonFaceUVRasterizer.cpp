@@ -27,9 +27,10 @@ namespace
         const float X =
             UV.X * static_cast<float>(Resolution - 1);
 
-        // PNGは上から下へ行が並ぶためVを反転
+        // UEのMeshDescriptionのUVは、すでにテクスチャ座標(左上原点・V下向き)なので
+        // PNGの行(上から下)とそのまま対応する。Vは反転しない。
         const float Y =
-            (1.0f - UV.Y)
+            UV.Y
             * static_cast<float>(Resolution - 1);
 
         return FVector2f(X, Y);
@@ -150,9 +151,14 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
     int32 LODIndex,
     int32 Resolution,
     FToonFaceUVRasterResult& OutResult,
-    FString& OutErrorMessage
+    FString& OutErrorMessage,
+    float NormalSmoothingStrength,
+    const FToonFaceSDFSettings& SDFSettings
 )
 {
+    const float SmoothingStrength =
+        FMath::Clamp(NormalSmoothingStrength, 0.0f, 1.0f);
+
     OutResult = FToonFaceUVRasterResult();
     OutErrorMessage.Reset();
 
@@ -262,6 +268,193 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
     const auto VertexInstanceNormals =
         Attributes.GetVertexInstanceNormals();
 
+    const auto VertexPositions =
+        Attributes.GetVertexPositions();
+
+
+    // ==========================================
+    // Smooth Normal Center
+    // ==========================================
+    //
+    // 顔の頂点法線は細かくバラつくため、そのまま使うと
+    // 影の境界がザラザラになる。
+    // 「各頂点の法線直線に最も近い点」を球状の中心として推定し、
+    // 中心から外向きの方向へ法線を寄せる。
+
+    FVector3f SmoothCenter = FVector3f::ZeroVector;
+    float RadialSign = 1.0f;
+
+    if (SmoothingStrength > 0.0f)
+    {
+        FBox3f PositionBounds(ForceInit);
+
+        TArray<FVector3f> SamplePositions;
+        TArray<FVector3f> SampleNormals;
+
+        for (const FPolygonGroupID PolygonGroupID :
+            MeshDescription->PolygonGroups().GetElementIDs())
+        {
+            if (!CandidateSlotNames.Contains(
+                PolygonGroupMaterialSlotNames[PolygonGroupID]))
+            {
+                continue;
+            }
+
+            for (const FTriangleID TriangleID :
+                MeshDescription->GetPolygonGroupTriangles(
+                    PolygonGroupID))
+            {
+                for (const FVertexInstanceID VI :
+                    MeshDescription->GetTriangleVertexInstances(
+                        TriangleID))
+                {
+                    FVector3f Normal = VertexInstanceNormals[VI];
+
+                    if (!Normal.Normalize())
+                    {
+                        continue;
+                    }
+
+                    const FVector3f Position =
+                        VertexPositions[
+                            MeshDescription->GetVertexInstanceVertex(VI)
+                        ];
+
+                    PositionBounds += Position;
+                    SamplePositions.Add(Position);
+                    SampleNormals.Add(Normal);
+                }
+            }
+        }
+
+        if (SamplePositions.Num() > 0)
+        {
+            const FVector3f BoundsCenter =
+                PositionBounds.GetCenter();
+
+            const double BoundsDiagonal =
+                PositionBounds.GetSize().Size();
+
+            SmoothCenter = BoundsCenter;
+
+            // 最小二乗: Σ(I - n nT) c = Σ(I - n nT) p
+            double A[3][3] = {};
+            double B[3] = {};
+
+            for (int32 i = 0; i < SamplePositions.Num(); ++i)
+            {
+                const FVector3f& N = SampleNormals[i];
+                const FVector3f& P = SamplePositions[i];
+
+                const double n[3] = { N.X, N.Y, N.Z };
+                const double p[3] = { P.X, P.Y, P.Z };
+
+                for (int32 r = 0; r < 3; ++r)
+                {
+                    for (int32 c = 0; c < 3; ++c)
+                    {
+                        const double M =
+                            (r == c ? 1.0 : 0.0) - n[r] * n[c];
+
+                        A[r][c] += M;
+                        B[r] += M * p[c];
+                    }
+                }
+            }
+
+            auto Det3 = [](const double M[3][3])
+            {
+                return
+                    M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1])
+                    - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0])
+                    + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
+            };
+
+            const double Count =
+                static_cast<double>(SamplePositions.Num());
+
+            const double DetA = Det3(A);
+
+            // 法線がほぼ平行(平面に近い)なら解が不安定なのでBounds中心を使う
+            if (FMath::Abs(DetA) > 1.0e-4 * Count * Count * Count)
+            {
+                double Solution[3] = {};
+
+                for (int32 k = 0; k < 3; ++k)
+                {
+                    double Ak[3][3];
+
+                    for (int32 r = 0; r < 3; ++r)
+                    {
+                        for (int32 c = 0; c < 3; ++c)
+                        {
+                            Ak[r][c] = (c == k) ? B[r] : A[r][c];
+                        }
+                    }
+
+                    Solution[k] = Det3(Ak) / DetA;
+                }
+
+                const FVector3f Estimated(
+                    static_cast<float>(Solution[0]),
+                    static_cast<float>(Solution[1]),
+                    static_cast<float>(Solution[2])
+                );
+
+                // 極端に遠い場合は不採用
+                if ((Estimated - BoundsCenter).Size()
+                    < BoundsDiagonal * 20.0)
+                {
+                    SmoothCenter = Estimated;
+                }
+            }
+
+            // 中心から外向きが元の法線と逆なら符号を反転
+            double DotSum = 0.0;
+
+            for (int32 i = 0; i < SamplePositions.Num(); ++i)
+            {
+                FVector3f Radial =
+                    SamplePositions[i] - SmoothCenter;
+
+                if (Radial.Normalize())
+                {
+                    DotSum += FVector3f::DotProduct(
+                        Radial,
+                        SampleNormals[i]
+                    );
+                }
+            }
+
+            RadialSign = (DotSum >= 0.0) ? 1.0f : -1.0f;
+        }
+    }
+
+    auto SmoothNormal =
+        [&](const FVertexInstanceID VI,
+            const FVector3f& Normal) -> FVector3f
+    {
+        if (SmoothingStrength <= 0.0f)
+        {
+            return Normal;
+        }
+
+        FVector3f Radial =
+            (VertexPositions[
+                MeshDescription->GetVertexInstanceVertex(VI)
+            ] - SmoothCenter) * RadialSign;
+
+        if (!Radial.Normalize())
+        {
+            return Normal;
+        }
+
+        FVector3f Result =
+            FMath::Lerp(Normal, Radial, SmoothingStrength);
+
+        return Result.Normalize() ? Result : Normal;
+    };
+
 
     // ==========================================
     // Pixel Buffers
@@ -360,6 +553,11 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
             {
                 continue;
             }
+
+            // 頂点法線のバラつきを抑えて滑らかな法線にする
+            N0 = SmoothNormal(VI0, N0);
+            N1 = SmoothNormal(VI1, N1);
+            N2 = SmoothNormal(VI2, N2);
 
 
             // ----------------------------------
@@ -529,6 +727,15 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
         PixelCount
     );
 
+    TArray<FVector3f> FinalNormals;
+    FinalNormals.Init(
+        FVector3f::ZeroVector,
+        PixelCount
+    );
+
+    TArray<uint8> Filled;
+    Filled.Init(0, PixelCount);
+
 
     for (int32 PixelIndex = 0;
         PixelIndex < PixelCount;
@@ -552,13 +759,209 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
                 FirstNormal[PixelIndex];
         }
 
-        NormalPixels[PixelIndex] =
-            EncodeNormal(FinalNormal);
+        FinalNormals[PixelIndex] = FinalNormal;
+        Filled[PixelIndex] = 1;
 
         CoveragePixels[PixelIndex] =
             FColor::White;
 
         ++OutResult.RasterizedPixelCount;
+    }
+
+
+    // ==========================================
+    // Padding (UVアイランド外へ法線を広げる)
+    // ==========================================
+    //
+    // バイリニア補間でアイランド境界に黒い筋や
+    // 別アイランドの値が混ざるのを防ぐ。
+
+    const int32 PaddingPixels =
+        FMath::Max(4, Resolution / 256);
+
+    for (int32 Pass = 0; Pass < PaddingPixels; ++Pass)
+    {
+        TArray<FVector3f> NextNormals = FinalNormals;
+        TArray<uint8> NextFilled = Filled;
+
+        bool bChanged = false;
+
+        for (int32 Y = 0; Y < Resolution; ++Y)
+        {
+            for (int32 X = 0; X < Resolution; ++X)
+            {
+                const int32 Index = Y * Resolution + X;
+
+                if (Filled[Index])
+                {
+                    continue;
+                }
+
+                FVector3f Sum = FVector3f::ZeroVector;
+                int32 NeighborCount = 0;
+
+                for (int32 DY = -1; DY <= 1; ++DY)
+                {
+                    for (int32 DX = -1; DX <= 1; ++DX)
+                    {
+                        if (DX == 0 && DY == 0)
+                        {
+                            continue;
+                        }
+
+                        const int32 NX = X + DX;
+                        const int32 NY = Y + DY;
+
+                        if (NX < 0 || NX >= Resolution
+                            || NY < 0 || NY >= Resolution)
+                        {
+                            continue;
+                        }
+
+                        const int32 NeighborIndex =
+                            NY * Resolution + NX;
+
+                        if (Filled[NeighborIndex])
+                        {
+                            Sum += FinalNormals[NeighborIndex];
+                            ++NeighborCount;
+                        }
+                    }
+                }
+
+                if (NeighborCount > 0 && Sum.Normalize())
+                {
+                    NextNormals[Index] = Sum;
+                    NextFilled[Index] = 1;
+                    bChanged = true;
+                }
+            }
+        }
+
+        FinalNormals = MoveTemp(NextNormals);
+        Filled = MoveTemp(NextFilled);
+
+        if (!bChanged)
+        {
+            break;
+        }
+    }
+
+    for (int32 PixelIndex = 0;
+        PixelIndex < PixelCount;
+        ++PixelIndex)
+    {
+        if (Filled[PixelIndex])
+        {
+            NormalPixels[PixelIndex] =
+                EncodeNormal(FinalNormals[PixelIndex]);
+        }
+    }
+
+
+    // ==========================================
+    // Face SDF
+    // ==========================================
+    //
+    // ライトを水平に「正面(0) → 側面(π/2) → 背面(π)」へ回したとき、
+    // 各ピクセルが明るい→影に変わる角度を 0〜1 (=0〜π) で保存する。
+    //   R: 右から光が来る場合
+    //   G: 左から光が来る場合 (右左反転した別計算なのでUV対称性は不要)
+    //
+    // マテリアル側は「光の角度 a(0=正面,1=背面) < SDF値」なら明るい。
+    //
+    // 法線の水平成分を (Nf=前, Nr=右) とすると、
+    //   Dot = A * cos(φ - φ0)  (A = |(Nf,Nr)|, φ0 = atan2(Nr, Nf))
+    // がしきい値Tを下回る角度φを解析的に求める(滑らかな法線ならSDFも滑らか)。
+
+    TArray<FColor> SDFPixels;
+
+    if (SDFSettings.bGenerate)
+    {
+        SDFPixels.Init(
+            FColor(0, 0, 0, 255),
+            PixelCount
+        );
+
+        const FVector3f Forward =
+            SDFSettings.ForwardAxis.GetSafeNormal();
+
+        const FVector3f Right =
+            SDFSettings.RightAxis.GetSafeNormal();
+
+        const float Threshold =
+            FMath::Clamp(SDFSettings.ShadowThreshold, -0.95f, 0.95f);
+
+        auto CalculateThresholdAngle =
+            [Threshold](float Nf, float Nr) -> float
+        {
+            const float A = FMath::Sqrt(Nf * Nf + Nr * Nr);
+
+            // 水平成分がほぼ無い(真上/真下向き)場合は影扱い
+            if (A < KINDA_SMALL_NUMBER)
+            {
+                return 0.0f;
+            }
+
+            const float Ratio = Threshold / A;
+
+            // 常に明るい
+            if (Ratio <= -1.0f)
+            {
+                return 1.0f;
+            }
+
+            // 常に影
+            if (Ratio >= 1.0f)
+            {
+                return 0.0f;
+            }
+
+            // 正面(φ=0)の時点で既に影なら、この回り方では点灯しない
+            if (Nf <= Threshold)
+            {
+                return 0.0f;
+            }
+
+            const float Phi0 = FMath::Atan2(Nr, Nf);
+            const float PhiEnd = Phi0 + FMath::Acos(Ratio);
+
+            return FMath::Clamp(PhiEnd / PI, 0.0f, 1.0f);
+        };
+
+        for (int32 PixelIndex = 0;
+            PixelIndex < PixelCount;
+            ++PixelIndex)
+        {
+            if (!Filled[PixelIndex])
+            {
+                continue;
+            }
+
+            const FVector3f& N = FinalNormals[PixelIndex];
+
+            const float Nf = FVector3f::DotProduct(N, Forward);
+            const float Nr = FVector3f::DotProduct(N, Right);
+
+            const float RightLight =
+                CalculateThresholdAngle(Nf, Nr);
+
+            const float LeftLight =
+                CalculateThresholdAngle(Nf, -Nr);
+
+            SDFPixels[PixelIndex] = FColor(
+                static_cast<uint8>(
+                    FMath::Clamp(
+                        FMath::RoundToInt(RightLight * 255.0f),
+                        0, 255)),
+                static_cast<uint8>(
+                    FMath::Clamp(
+                        FMath::RoundToInt(LeftLight * 255.0f),
+                        0, 255)),
+                0,
+                255
+            );
+        }
     }
 
 
@@ -609,7 +1012,28 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
         CoveragePixels
     );
 
-    if (!bNormalSaved || !bCoverageSaved)
+    bool bSDFSaved = true;
+
+    if (SDFSettings.bGenerate)
+    {
+        OutResult.SDFPreviewPath =
+            FPaths::Combine(
+                OutputDirectory,
+                FString::Printf(
+                    TEXT("FaceSDF_Slot_%d.png"),
+                    MaterialSlotIndex
+                )
+            );
+
+        bSDFSaved = SavePNG(
+            OutResult.SDFPreviewPath,
+            Resolution,
+            Resolution,
+            SDFPixels
+        );
+    }
+
+    if (!bNormalSaved || !bCoverageSaved || !bSDFSaved)
     {
         OutErrorMessage =
             TEXT("プレビュー画像の保存に失敗しました。");

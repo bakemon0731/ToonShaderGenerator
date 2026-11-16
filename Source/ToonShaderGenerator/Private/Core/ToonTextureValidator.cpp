@@ -187,17 +187,49 @@ void FToonTextureValidator::ValidateSlot(
 
     case EToonMaterialType::Face:
 
-        ValidateTextureInput(
-            SlotInfo,
-            TEXT("Face SDF"),
-            SlotInfo.FaceSDFTexturePath,
-            true,
-            false,
-            false,
-            TC_Default,
-            TEXT(""),
-            OutIssues
-        );
+        // Face Normal Mapが設定されている場合
+        if (!SlotInfo.FaceNormalDirectionTexturePath.IsNull())
+        {
+            ValidateTextureInput(
+                SlotInfo,
+                TEXT("Face Normal Direction Map"),
+                SlotInfo.FaceNormalDirectionTexturePath,
+                true,
+                false,
+                true,
+                TC_VectorDisplacementmap,
+                TEXT("VectorDisplacementmap"),
+                OutIssues
+            );
+
+            // SDFは任意
+            ValidateTextureInput(
+                SlotInfo,
+                TEXT("Face SDF"),
+                SlotInfo.FaceSDFTexturePath,
+                false,
+                false,
+                false,
+                TC_Default,
+                TEXT(""),
+                OutIssues
+            );
+        }
+        else
+        {
+            // Normal MapがなければSDFが必要
+            ValidateTextureInput(
+                SlotInfo,
+                TEXT("Face SDF"),
+                SlotInfo.FaceSDFTexturePath,
+                true,
+                false,
+                false,
+                TC_Default,
+                TEXT(""),
+                OutIssues
+            );
+        }
 
         break;
 

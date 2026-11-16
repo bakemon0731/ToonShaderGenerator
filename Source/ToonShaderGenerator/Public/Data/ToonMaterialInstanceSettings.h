@@ -19,6 +19,8 @@ struct FToonMaterialInstanceSettings
 	// ==========================================
 	FSoftObjectPath FaceSDFTexturePath;
 	
+	FSoftObjectPath FaceNormalDirectionTexturePath;
+	
 	float FaceBoundarySoftness = 0.02f;
 	
 	// ==========================================

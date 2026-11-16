@@ -130,6 +130,16 @@ bool FToonFacePreviewTextureImporter::ImportNormalPreview(
     ImportedTexture->CompressionSettings =
         TC_VectorDisplacementmap;
 
+    // ミップマップを作らない
+    // (別アイランドの法線が混ざって影の境界が汚くなるのを防ぐ)
+    ImportedTexture->MipGenSettings = TMGS_NoMipmaps;
+
+    // ストリーミングで低解像度になるのを防ぐ
+    ImportedTexture->NeverStream = true;
+
+    // バイリニアで滑らかに補間する
+    ImportedTexture->Filter = TF_Bilinear;
+
     // Textureの変更を反映
     ImportedTexture->PostEditChange();
 
@@ -187,4 +197,23 @@ bool FToonFacePreviewTextureImporter::ImportNormalPreview(
     OutObjectPath = ImportedTexture->GetPathName();
 
     return true;
+}
+
+// ==================================================
+// Import Face SDF
+// ==================================================
+
+bool FToonFacePreviewTextureImporter::ImportFaceSDF(
+    const FString& SourcePngPath,
+    FString& OutObjectPath,
+    FString& OutErrorMessage
+)
+{
+    // SDFもLinear・非圧縮・ミップなし・バイリニアで扱うため、
+    // 法線プレビューと同じインポート設定を使う
+    return ImportNormalPreview(
+        SourcePngPath,
+        OutObjectPath,
+        OutErrorMessage
+    );
 }
