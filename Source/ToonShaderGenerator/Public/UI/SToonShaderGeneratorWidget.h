@@ -145,4 +145,6 @@ private:
 private:
 	// Face Mesh Analysis
 	FReply HandleAnalyzeFaceSlotsClicked();
+	
+	FReply HandleGenerateFaceNormalPreviewClicked();
 };

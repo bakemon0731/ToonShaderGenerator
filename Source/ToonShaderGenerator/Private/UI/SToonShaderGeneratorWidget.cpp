@@ -7,6 +7,7 @@
 #include "Core/ToonTextureValidator.h"
 #include "Core/ToonMasterMaterialRegistry.h"
 #include "Core/ToonFaceMeshAnalyzer.h"
+#include "Core/ToonFaceUVRasterizer.h"
 
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceConstant.h"
@@ -466,6 +467,27 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
                 )    
             ]
 
+            // ==========================================
+            // Face Normal Preview Button
+            // ==========================================
+
+            +SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, 12.0f)
+            [
+                SNew(SButton)
+
+                .Text(
+                    FText::FromString(
+                        TEXT("Face Normal Mapプレビュー生成")
+                    )
+                )        
+
+                .OnClicked(
+                    this,
+                    &SToonShaderGeneratorWidget::HandleGenerateFaceNormalPreviewClicked
+                )    
+            ]
 
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -2179,6 +2201,176 @@ FReply SToonShaderGeneratorWidget::HandleAnalyzeFaceSlotsClicked()
     StatusText->SetText(
         FText::FromString(
             TEXT("Face Slotのメッシュ解析が完了しました。")
+        )
+    );
+
+    return FReply::Handled();
+}
+// ==================================================
+// Generate Face Normal Preview
+// ==================================================
+FReply SToonShaderGeneratorWidget::HandleGenerateFaceNormalPreviewClicked()
+{
+    if (SelectedSkeletalMeshPath.IsNull())
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("Skeletal Meshを選択してください。")
+            )
+        );
+
+        return FReply::Handled();
+    }
+
+    if (CurrentSlotInfos.IsEmpty())
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("先にMaterial Slot情報を取得してください。")
+            )
+        );
+
+        return FReply::Handled();
+    }
+
+
+    // ==========================================
+    // Skeletal Mesh Load
+    // ==========================================
+
+    USkeletalMesh* SkeletalMesh =
+        Cast<USkeletalMesh>(
+            SelectedSkeletalMeshPath.TryLoad()
+        );
+
+    if (!IsValid(SkeletalMesh))
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT("Skeletal Meshの読み込みに失敗しました。")
+            )
+        );
+
+        return FReply::Handled();
+    }
+
+
+    // ==========================================
+    // Face Slot Analysis
+    // ==========================================
+
+    int32 FaceSlotCount = 0;
+    int32 SuccessCount = 0;
+
+    TArray<FString> ReportLines;
+
+    constexpr int32 PreviewResolution = 1024;
+
+    for (const FToonMaterialSlotInfo& SlotInfo : CurrentSlotInfos)
+    {
+        if (SlotInfo.MaterialType != EToonMaterialType::Face)
+        {
+            continue;
+        }
+
+        ++FaceSlotCount;
+
+        FToonFaceUVRasterResult Result;
+
+        FString ErrorMessage;
+
+        const bool bSuccess =
+            FToonFaceUVRasterizer::GenerateNormalPreview(
+                SkeletalMesh,
+                SlotInfo.SlotIndex,
+                0,
+                PreviewResolution,
+                Result,
+                ErrorMessage
+            );
+
+        if (!bSuccess)
+        {
+            ReportLines.Add(
+                FString::Printf(
+                    TEXT(
+                        "[Slot %d] %s\n失敗：%s"
+                    ),
+                    SlotInfo.SlotIndex,
+                    *SlotInfo.SlotName.ToString(),
+                    *ErrorMessage
+                )
+            );
+
+            continue;
+        }
+
+        ++SuccessCount;
+
+        ReportLines.Add(
+            FString::Printf(
+                TEXT(
+                    "[Slot %d] %s\n"
+                    "Triangles：%d\n"
+                    "Resolution：%d x %d\n"
+                    "Rasterized Pixels：%d\n"
+                    "Overlapped Pixels：%d\n\n"
+                    "Normal Preview：\n%s\n\n"
+                    "Coverage Preview：\n%s"
+                ),
+                SlotInfo.SlotIndex,
+                *SlotInfo.SlotName.ToString(),
+                Result.TriangleCount,
+                Result.Resolution,
+                Result.Resolution,
+                Result.RasterizedPixelCount,
+                Result.OverlappedPixelCount,
+                *Result.NormalPreviewPath,
+                *Result.CoveragePreviewPath
+            )
+        );
+    }
+
+
+    // ==========================================
+    // Result
+    // ==========================================
+
+    if (FaceSlotCount == 0)
+    {
+        StatusText->SetText(
+            FText::FromString(
+                TEXT(
+                    "Material TypeがFaceのSlotがありません。"
+                )
+            )
+        );
+
+        return FReply::Handled();
+    }
+
+    FString Report = FString::Printf(
+        TEXT(
+            "Face UV Rasterization\n"
+            "成功：%d / %d\n\n"
+        ),
+        SuccessCount,
+        FaceSlotCount
+    );
+
+    Report += FString::Join(
+        ReportLines,
+        TEXT("\n\n")
+    );
+
+    FMessageDialog::Open(
+        EAppMsgType::Ok,
+        FText::FromString(Report)
+    );
+
+    StatusText->SetText(
+        FText::FromString(
+            TEXT("Face Normal Mapプレビュー生成が完了しました。")
         )
     );
 
