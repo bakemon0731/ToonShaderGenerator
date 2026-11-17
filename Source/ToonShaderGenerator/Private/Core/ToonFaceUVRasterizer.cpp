@@ -284,7 +284,12 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
     FVector3f SmoothCenter = FVector3f::ZeroVector;
     float RadialSign = 1.0f;
 
-    if (SmoothingStrength > 0.0f)
+    // 顔の前方向の自動検出用(法線の平均)
+    FVector3f AverageNormal = FVector3f::ZeroVector;
+    int32 AverageNormalCount = 0;
+
+    if (SmoothingStrength > 0.0f
+        || (SDFSettings.bGenerate && SDFSettings.bAutoDetectAxes))
     {
         FBox3f PositionBounds(ForceInit);
 
@@ -323,6 +328,9 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
                     PositionBounds += Position;
                     SamplePositions.Add(Position);
                     SampleNormals.Add(Normal);
+
+                    AverageNormal += Normal;
+                    ++AverageNormalCount;
                 }
             }
         }
@@ -883,11 +891,35 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
             PixelCount
         );
 
-        const FVector3f Forward =
+        FVector3f Forward =
             SDFSettings.ForwardAxis.GetSafeNormal();
 
-        const FVector3f Right =
+        FVector3f Right =
             SDFSettings.RightAxis.GetSafeNormal();
+
+        // 顔の面は前方を向いているので、頂点法線の平均の水平成分が
+        // 顔の前方向になる(反対向きのキャラクターでも自動で追従する)
+        if (SDFSettings.bAutoDetectAxes && AverageNormalCount > 0)
+        {
+            const FVector3f Up = SDFSettings.UpAxis.GetSafeNormal();
+
+            const FVector3f MeanNormal =
+                AverageNormal / static_cast<float>(AverageNormalCount);
+
+            FVector3f Horizontal =
+                MeanNormal
+                - Up * FVector3f::DotProduct(MeanNormal, Up);
+
+            // 平均が小さすぎる(顔以外も含んで打ち消し合っている)場合は不採用
+            if (Horizontal.Size() > 0.1f && Horizontal.Normalize())
+            {
+                Forward = Horizontal;
+                Right = FVector3f::CrossProduct(Up, Forward).GetSafeNormal();
+            }
+        }
+
+        OutResult.SDFForwardAxis = Forward;
+        OutResult.SDFRightAxis = Right;
 
         const float Threshold =
             FMath::Clamp(SDFSettings.ShadowThreshold, -0.95f, 0.95f);

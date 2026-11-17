@@ -1169,6 +1169,9 @@ void SToonShaderGeneratorWidget::HandleTextureChanged(const FAssetData& AssetDat
     {
     case EToonTextureInputType::FaceSDF:
         SlotInfo.FaceSDFTexturePath = TexturePath;
+
+        // ユーザーが選んだSDFは手描き等の1チャンネルSDFとして扱う
+        SlotInfo.bFaceSDFIsGenerated = false;
         break;
 
     case EToonTextureInputType::HairFlowMap:
@@ -1457,6 +1460,10 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
     
     Settings.FaceNormalDirectionTexturePath =
         SlotInfo.FaceNormalDirectionTexturePath;
+
+    Settings.bFaceSDFIsGenerated = SlotInfo.bFaceSDFIsGenerated;
+    Settings.FaceForwardAxis = SlotInfo.FaceForwardAxis;
+    Settings.FaceRightAxis = SlotInfo.FaceRightAxis;
     
     // Skin Base
     Settings.SkinBaseColorTexturePath =
@@ -2290,7 +2297,7 @@ FReply SToonShaderGeneratorWidget::HandleGenerateFaceNormalPreviewClicked()
 
     constexpr int32 PreviewResolution = 2048;
 
-    for (const FToonMaterialSlotInfo& SlotInfo : CurrentSlotInfos)
+    for (FToonMaterialSlotInfo& SlotInfo : CurrentSlotInfos)
     {
         if (SlotInfo.MaterialType != EToonMaterialType::Face)
         {
@@ -2331,6 +2338,10 @@ FReply SToonShaderGeneratorWidget::HandleGenerateFaceNormalPreviewClicked()
 
         ++SuccessCount;
 
+        // SDF生成時に検出した顔の前方向・右方向を保存(MI生成時に使う)
+        SlotInfo.FaceForwardAxis = Result.SDFForwardAxis;
+        SlotInfo.FaceRightAxis = Result.SDFRightAxis;
+
         ReportLines.Add(
             FString::Printf(
                 TEXT(
@@ -2341,7 +2352,10 @@ FReply SToonShaderGeneratorWidget::HandleGenerateFaceNormalPreviewClicked()
                     "Overlapped Pixels：%d\n\n"
                     "Normal Preview：\n%s\n\n"
                     "Coverage Preview：\n%s\n\n"
-                    "SDF Preview：\n%s"
+                    "SDF Preview：\n%s\n\n"
+                    "検出した顔の軸(ローカル空間)\n"
+                    "Forward：(%.2f, %.2f, %.2f)\n"
+                    "Right：(%.2f, %.2f, %.2f)"
                 ),
                 SlotInfo.SlotIndex,
                 *SlotInfo.SlotName.ToString(),
@@ -2352,7 +2366,13 @@ FReply SToonShaderGeneratorWidget::HandleGenerateFaceNormalPreviewClicked()
                 Result.OverlappedPixelCount,
                 *Result.NormalPreviewPath,
                 *Result.CoveragePreviewPath,
-                *Result.SDFPreviewPath
+                *Result.SDFPreviewPath,
+                Result.SDFForwardAxis.X,
+                Result.SDFForwardAxis.Y,
+                Result.SDFForwardAxis.Z,
+                Result.SDFRightAxis.X,
+                Result.SDFRightAxis.Y,
+                Result.SDFRightAxis.Z
             )
         );
     }
@@ -2488,6 +2508,9 @@ FReply SToonShaderGeneratorWidget::HandleImportFaceNormalPreviewClicked()
                 {
                     SlotInfo.FaceSDFTexturePath =
                         FSoftObjectPath(SDFAssetPath);
+
+                    // プラグイン生成のRG形式
+                    SlotInfo.bFaceSDFIsGenerated = true;
 
                     ReportLines.Add(
                         FString::Printf(

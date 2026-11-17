@@ -30,6 +30,10 @@ struct FToonFaceUVRasterResult
 
 	// FaceSDFの保存先(R=右から光が来る場合 / G=左から光が来る場合)
 	FString SDFPreviewPath;
+
+	// SDF生成に使った顔の前方向・右方向(ローカル空間)
+	FVector3f SDFForwardAxis = FVector3f(0.0f, 1.0f, 0.0f);
+	FVector3f SDFRightAxis = FVector3f(-1.0f, 0.0f, 0.0f);
 };
 
 // ==========================================
@@ -40,6 +44,16 @@ struct FToonFaceSDFSettings
 {
 	// SDFも同時に生成する
 	bool bGenerate = true;
+
+	// 顔の前方向を自動検出する
+	// 顔スロットの頂点法線の平均(の水平成分)を前方向とするため、
+	// 前が+Yでも-Xでも、反対向きのキャラクターでも対応できる
+	bool bAutoDetectAxes = true;
+
+	// 頭の上方向(ローカル空間)。右方向 = Cross(Up, Forward)
+	FVector3f UpAxis = FVector3f(0.0f, 0.0f, 1.0f);
+
+	// 以下のForward/Rightは、自動検出できなかった場合(または自動検出OFF時)に使う
 
 	// 顔の前方向(スケルタルメッシュのローカル空間)
 	// 例: Y軸(緑)が前なら(0,1,0)

@@ -20,6 +20,13 @@ struct FToonMaterialInstanceSettings
 	FSoftObjectPath FaceSDFTexturePath;
 	
 	FSoftObjectPath FaceNormalDirectionTexturePath;
+
+	// FaceSDFがプラグイン生成のRG形式か(falseなら1チャンネルSDF扱い)
+	bool bFaceSDFIsGenerated = false;
+
+	// 顔のローカル空間での前方向・右方向
+	FVector3f FaceForwardAxis = FVector3f(0.0f, 1.0f, 0.0f);
+	FVector3f FaceRightAxis = FVector3f(-1.0f, 0.0f, 0.0f);
 	
 	float FaceBoundarySoftness = 0.02f;
 	

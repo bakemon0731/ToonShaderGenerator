@@ -481,6 +481,46 @@ FToonMaterialInstanceCreator::Create(
 
 
             // --------------------------------------
+            // Face SDF Mode / Axes
+            // --------------------------------------
+
+            // true  = 手描きなどの1チャンネルSDF(UVのU反転で左右を切り替える)
+            // false = プラグイン生成のRG形式(R=右光 / G=左光)
+            CreatedInstance->SetStaticSwitchParameterValueEditorOnly(
+                FMaterialParameterInfo(
+                    FName(TEXT("FaceSDFSingleChannelMirror"))
+                ),
+                IsValid(FaceSDFTexture)
+                && !Settings.bFaceSDFIsGenerated
+            );
+
+            // 顔のローカル空間での前方向・右方向
+            CreatedInstance->SetVectorParameterValueEditorOnly(
+                FMaterialParameterInfo(
+                    FName(TEXT("FaceForwardAxis"))
+                ),
+                FLinearColor(
+                    Settings.FaceForwardAxis.X,
+                    Settings.FaceForwardAxis.Y,
+                    Settings.FaceForwardAxis.Z,
+                    0.0f
+                )
+            );
+
+            CreatedInstance->SetVectorParameterValueEditorOnly(
+                FMaterialParameterInfo(
+                    FName(TEXT("FaceRightAxis"))
+                ),
+                FLinearColor(
+                    Settings.FaceRightAxis.X,
+                    Settings.FaceRightAxis.Y,
+                    Settings.FaceRightAxis.Z,
+                    0.0f
+                )
+            );
+
+
+            // --------------------------------------
             // Face Normal Shadow Threshold
             // --------------------------------------
 
