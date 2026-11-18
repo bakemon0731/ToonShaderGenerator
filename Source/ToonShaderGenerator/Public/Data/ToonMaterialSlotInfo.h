@@ -17,6 +17,7 @@ enum class EToonMaterialType : uint8
 enum class EToonTextureInputType : uint8
 {
 	FaceSDF,
+	FaceBaseColor,
 	HairFlowMap,
 	SkinBaseColor,
 	ClothingBaseColor,
@@ -43,7 +44,12 @@ struct FToonMaterialSlotInfo
 	EToonMaterialType MaterialType = EToonMaterialType::Other;
 	
 	// Face用
+	// FaceSDF(任意)。未指定ならマスターマテリアルに固定で入っている標準SDFを使う
 	FSoftObjectPath FaceSDFTexturePath;
+
+	// FaceのBaseColorテクスチャ(任意)。未指定ならマスターマテリアルの既定(白)のまま
+	FSoftObjectPath FaceBaseColorTexturePath;
+
 	// 自動生成したFace Normal Map
 	FSoftObjectPath FaceNormalDirectionTexturePath;
 

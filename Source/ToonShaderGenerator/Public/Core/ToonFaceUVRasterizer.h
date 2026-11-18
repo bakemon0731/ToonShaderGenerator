@@ -34,6 +34,9 @@ struct FToonFaceUVRasterResult
 	// SDF生成に使った顔の前方向・右方向(ローカル空間)
 	FVector3f SDFForwardAxis = FVector3f(0.0f, 1.0f, 0.0f);
 	FVector3f SDFRightAxis = FVector3f(-1.0f, 0.0f, 0.0f);
+
+	// SDFに出っ張り補正(鼻先・頬・あご)を適用したか
+	bool bSDFFeatureApplied = false;
 };
 
 // ==========================================
@@ -66,6 +69,16 @@ struct FToonFaceSDFSettings
 	// 明暗の境界となる Dot(法線, ライト) の値
 	// 0.0で「光が面に垂直より手前なら明るい」
 	float ShadowThreshold = 0.0f;
+
+	// 出っ張り補正の強さ(0.0〜0.3程度)。SDF値(0〜1 = 0〜180度)に加算する。
+	// 0.16 = 約29度。大きいほど、出っ張りが影側でも光を長く受ける。
+	// へこみ(眼窩など)は逆に早く影になる。0.0で無効。
+	//
+	// 鼻先・あご・眉など「細かい出っ張り」
+	float NoseTipGain = 0.16f;
+
+	// 頬・頬骨など「顔の側面にある広い出っ張り」(顔の中心線付近の鼻先・あごには効かない)
+	float CheekGain = 0.3f;
 };
 
 // ==========================================

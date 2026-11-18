@@ -187,46 +187,45 @@ void FToonTextureValidator::ValidateSlot(
 
     case EToonMaterialType::Face:
 
-        // Face Normal Mapが設定されている場合
+        // Face SDF(任意)
+        // 未指定ならマスターマテリアル固定の標準SDFを使うため警告しない
+        ValidateTextureInput(
+            SlotInfo,
+            TEXT("Face SDF"),
+            SlotInfo.FaceSDFTexturePath,
+            false,
+            false,
+            false,
+            TC_Default,
+            TEXT(""),
+            OutIssues
+        );
+
+        // Face Base Color(任意)
+        ValidateTextureInput(
+            SlotInfo,
+            TEXT("Face Base Color"),
+            SlotInfo.FaceBaseColorTexturePath,
+            false,
+            true,
+            false,
+            TC_Default,
+            TEXT("Default"),
+            OutIssues
+        );
+
+        // Face Normal Direction Map(自動生成した場合のみ)
         if (!SlotInfo.FaceNormalDirectionTexturePath.IsNull())
         {
             ValidateTextureInput(
                 SlotInfo,
                 TEXT("Face Normal Direction Map"),
                 SlotInfo.FaceNormalDirectionTexturePath,
-                true,
+                false,
                 false,
                 true,
                 TC_VectorDisplacementmap,
                 TEXT("VectorDisplacementmap"),
-                OutIssues
-            );
-
-            // SDFは任意
-            ValidateTextureInput(
-                SlotInfo,
-                TEXT("Face SDF"),
-                SlotInfo.FaceSDFTexturePath,
-                false,
-                false,
-                false,
-                TC_Default,
-                TEXT(""),
-                OutIssues
-            );
-        }
-        else
-        {
-            // Normal MapがなければSDFが必要
-            ValidateTextureInput(
-                SlotInfo,
-                TEXT("Face SDF"),
-                SlotInfo.FaceSDFTexturePath,
-                true,
-                false,
-                false,
-                TC_Default,
-                TEXT(""),
                 OutIssues
             );
         }

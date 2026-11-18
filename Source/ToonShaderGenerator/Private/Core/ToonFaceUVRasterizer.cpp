@@ -138,6 +138,88 @@ namespace
             *FilePath
         );
     }
+
+
+    // マスク内のピクセルだけを使うボックスブラー(積分画像なのでO(N))
+    void MaskedBoxBlur(
+        const TArray<float>& Src,
+        const TArray<uint8>& Mask,
+        const int32 Resolution,
+        const int32 Radius,
+        TArray<float>& OutDst
+    )
+    {
+        const int32 Stride = Resolution + 1;
+
+        TArray<double> SumValue;
+        SumValue.SetNumZeroed(Stride * Stride);
+
+        TArray<int32> SumCount;
+        SumCount.SetNumZeroed(Stride * Stride);
+
+        for (int32 Y = 0; Y < Resolution; ++Y)
+        {
+            double RowValue = 0.0;
+            int32 RowCount = 0;
+
+            for (int32 X = 0; X < Resolution; ++X)
+            {
+                const int32 Index = Y * Resolution + X;
+
+                if (Mask[Index])
+                {
+                    RowValue += Src[Index];
+                    ++RowCount;
+                }
+
+                SumValue[(Y + 1) * Stride + (X + 1)] =
+                    SumValue[Y * Stride + (X + 1)] + RowValue;
+
+                SumCount[(Y + 1) * Stride + (X + 1)] =
+                    SumCount[Y * Stride + (X + 1)] + RowCount;
+            }
+        }
+
+        OutDst.Init(0.0f, Resolution * Resolution);
+
+        for (int32 Y = 0; Y < Resolution; ++Y)
+        {
+            for (int32 X = 0; X < Resolution; ++X)
+            {
+                const int32 Index = Y * Resolution + X;
+
+                if (!Mask[Index])
+                {
+                    continue;
+                }
+
+                const int32 X0 = FMath::Max(0, X - Radius);
+                const int32 X1 = FMath::Min(Resolution - 1, X + Radius);
+                const int32 Y0 = FMath::Max(0, Y - Radius);
+                const int32 Y1 = FMath::Min(Resolution - 1, Y + Radius);
+
+                const int32 Count =
+                    SumCount[(Y1 + 1) * Stride + (X1 + 1)]
+                    - SumCount[Y0 * Stride + (X1 + 1)]
+                    - SumCount[(Y1 + 1) * Stride + X0]
+                    + SumCount[Y0 * Stride + X0];
+
+                if (Count <= 0)
+                {
+                    continue;
+                }
+
+                const double Value =
+                    SumValue[(Y1 + 1) * Stride + (X1 + 1)]
+                    - SumValue[Y0 * Stride + (X1 + 1)]
+                    - SumValue[(Y1 + 1) * Stride + X0]
+                    + SumValue[Y0 * Stride + X0];
+
+                OutDst[Index] =
+                    static_cast<float>(Value / static_cast<double>(Count));
+            }
+        }
+    }
 }
 
 
@@ -288,8 +370,10 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
     FVector3f AverageNormal = FVector3f::ZeroVector;
     int32 AverageNormalCount = 0;
 
-    if (SmoothingStrength > 0.0f
-        || (SDFSettings.bGenerate && SDFSettings.bAutoDetectAxes))
+    // 最小二乗で球の中心を推定できたか(出っ張り補正に必要)
+    bool bCenterEstimated = false;
+
+    if (SmoothingStrength > 0.0f || SDFSettings.bGenerate)
     {
         FBox3f PositionBounds(ForceInit);
 
@@ -414,6 +498,7 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
                     < BoundsDiagonal * 20.0)
                 {
                     SmoothCenter = Estimated;
+                    bCenterEstimated = true;
                 }
             }
 
@@ -435,6 +520,40 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
             }
 
             RadialSign = (DotSum >= 0.0) ? 1.0f : -1.0f;
+        }
+    }
+
+    // ==========================================
+    // Face Axes (前方向・右方向)
+    // ==========================================
+    //
+    // 顔の面は前方を向いているので、頂点法線の平均の水平成分が
+    // 顔の前方向になる(反対向きのキャラクターでも自動で追従する)。
+    // SDFの計算と、頬の判定(顔の中心線からの横位置)で使う。
+
+    FVector3f ResolvedForward =
+        SDFSettings.ForwardAxis.GetSafeNormal();
+
+    FVector3f ResolvedRight =
+        SDFSettings.RightAxis.GetSafeNormal();
+
+    if (SDFSettings.bAutoDetectAxes && AverageNormalCount > 0)
+    {
+        const FVector3f Up = SDFSettings.UpAxis.GetSafeNormal();
+
+        const FVector3f MeanNormal =
+            AverageNormal / static_cast<float>(AverageNormalCount);
+
+        FVector3f Horizontal =
+            MeanNormal
+            - Up * FVector3f::DotProduct(MeanNormal, Up);
+
+        // 平均が小さすぎる(顔以外も含んで打ち消し合っている)場合は不採用
+        if (Horizontal.Size() > 0.1f && Horizontal.Normalize())
+        {
+            ResolvedForward = Horizontal;
+            ResolvedRight =
+                FVector3f::CrossProduct(Up, ResolvedForward).GetSafeNormal();
         }
     }
 
@@ -485,6 +604,40 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
 
     TArray<uint32> HitCounts;
     HitCounts.Init(0, PixelCount);
+
+    // 球の中心からの距離(出っ張り補正用)
+    TArray<float> RadiusAccumulation;
+    RadiusAccumulation.Init(0.0f, PixelCount);
+
+    TArray<float> LateralAccumulation;
+    LateralAccumulation.Init(0.0f, PixelCount);
+
+    // 顔の中心線からの横位置(0=中心線、±1=真横)。頬の判定に使う。
+    auto GetLateral =
+        [&](const FVertexInstanceID VI) -> float
+    {
+        const FVector3f Offset =
+            VertexPositions[
+                MeshDescription->GetVertexInstanceVertex(VI)
+            ] - SmoothCenter;
+
+        const float Length = Offset.Size();
+
+        if (Length < KINDA_SMALL_NUMBER)
+        {
+            return 0.0f;
+        }
+
+        return FVector3f::DotProduct(Offset, ResolvedRight) / Length;
+    };
+
+    auto GetRadius =
+        [&](const FVertexInstanceID VI) -> float
+    {
+        return (VertexPositions[
+            MeshDescription->GetVertexInstanceVertex(VI)
+        ] - SmoothCenter).Size();
+    };
 
 
     // ==========================================
@@ -566,6 +719,14 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
             N0 = SmoothNormal(VI0, N0);
             N1 = SmoothNormal(VI1, N1);
             N2 = SmoothNormal(VI2, N2);
+
+            const float Radius0 = GetRadius(VI0);
+            const float Radius1 = GetRadius(VI1);
+            const float Radius2 = GetRadius(VI2);
+
+            const float Lateral0 = GetLateral(VI0);
+            const float Lateral1 = GetLateral(VI1);
+            const float Lateral2 = GetLateral(VI2);
 
 
             // ----------------------------------
@@ -684,6 +845,12 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
                     NormalAccumulation[PixelIndex] +=
                         InterpolatedNormal;
 
+                    RadiusAccumulation[PixelIndex] +=
+                        Radius0 * W0 + Radius1 * W1 + Radius2 * W2;
+
+                    LateralAccumulation[PixelIndex] +=
+                        Lateral0 * W0 + Lateral1 * W1 + Lateral2 * W2;
+
                     ++HitCounts[PixelIndex];
 
                     bRasterizedTriangle = true;
@@ -744,6 +911,12 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
     TArray<uint8> Filled;
     Filled.Init(0, PixelCount);
 
+    TArray<float> FinalRadius;
+    FinalRadius.Init(0.0f, PixelCount);
+
+    TArray<float> FinalLateral;
+    FinalLateral.Init(0.0f, PixelCount);
+
 
     for (int32 PixelIndex = 0;
         PixelIndex < PixelCount;
@@ -768,6 +941,12 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
         }
 
         FinalNormals[PixelIndex] = FinalNormal;
+        FinalRadius[PixelIndex] =
+            RadiusAccumulation[PixelIndex]
+            / static_cast<float>(HitCount);
+        FinalLateral[PixelIndex] =
+            LateralAccumulation[PixelIndex]
+            / static_cast<float>(HitCount);
         Filled[PixelIndex] = 1;
 
         CoveragePixels[PixelIndex] =
@@ -790,6 +969,8 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
     for (int32 Pass = 0; Pass < PaddingPixels; ++Pass)
     {
         TArray<FVector3f> NextNormals = FinalNormals;
+        TArray<float> NextRadius = FinalRadius;
+        TArray<float> NextLateral = FinalLateral;
         TArray<uint8> NextFilled = Filled;
 
         bool bChanged = false;
@@ -806,6 +987,8 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
                 }
 
                 FVector3f Sum = FVector3f::ZeroVector;
+                float RadiusSum = 0.0f;
+                float LateralSum = 0.0f;
                 int32 NeighborCount = 0;
 
                 for (int32 DY = -1; DY <= 1; ++DY)
@@ -832,6 +1015,8 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
                         if (Filled[NeighborIndex])
                         {
                             Sum += FinalNormals[NeighborIndex];
+                            RadiusSum += FinalRadius[NeighborIndex];
+                            LateralSum += FinalLateral[NeighborIndex];
                             ++NeighborCount;
                         }
                     }
@@ -840,6 +1025,10 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
                 if (NeighborCount > 0 && Sum.Normalize())
                 {
                     NextNormals[Index] = Sum;
+                    NextRadius[Index] =
+                        RadiusSum / static_cast<float>(NeighborCount);
+                    NextLateral[Index] =
+                        LateralSum / static_cast<float>(NeighborCount);
                     NextFilled[Index] = 1;
                     bChanged = true;
                 }
@@ -847,6 +1036,8 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
         }
 
         FinalNormals = MoveTemp(NextNormals);
+        FinalRadius = MoveTemp(NextRadius);
+        FinalLateral = MoveTemp(NextLateral);
         Filled = MoveTemp(NextFilled);
 
         if (!bChanged)
@@ -886,40 +1077,161 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
 
     if (SDFSettings.bGenerate)
     {
+        // B/A は 128 (= 0.5 = 補正なし) を既定値にする
         SDFPixels.Init(
-            FColor(0, 0, 0, 255),
+            FColor(0, 0, 128, 128),
             PixelCount
         );
 
-        FVector3f Forward =
-            SDFSettings.ForwardAxis.GetSafeNormal();
-
-        FVector3f Right =
-            SDFSettings.RightAxis.GetSafeNormal();
-
-        // 顔の面は前方を向いているので、頂点法線の平均の水平成分が
-        // 顔の前方向になる(反対向きのキャラクターでも自動で追従する)
-        if (SDFSettings.bAutoDetectAxes && AverageNormalCount > 0)
-        {
-            const FVector3f Up = SDFSettings.UpAxis.GetSafeNormal();
-
-            const FVector3f MeanNormal =
-                AverageNormal / static_cast<float>(AverageNormalCount);
-
-            FVector3f Horizontal =
-                MeanNormal
-                - Up * FVector3f::DotProduct(MeanNormal, Up);
-
-            // 平均が小さすぎる(顔以外も含んで打ち消し合っている)場合は不採用
-            if (Horizontal.Size() > 0.1f && Horizontal.Normalize())
-            {
-                Forward = Horizontal;
-                Right = FVector3f::CrossProduct(Up, Forward).GetSafeNormal();
-            }
-        }
+        const FVector3f Forward = ResolvedForward;
+        const FVector3f Right = ResolvedRight;
 
         OutResult.SDFForwardAxis = Forward;
         OutResult.SDFRightAxis = Right;
+
+
+        // ------------------------------------------
+        // Protrusion (出っ張り): 鼻先・頬・あご・眉など
+        // ------------------------------------------
+        //
+        // 各ピクセルの「球の中心からの距離」の、細かい成分だけを取り出す。
+        //   細かいぼかし - 大きいぼかし (Difference of Gaussians)
+        // 正の値 = 周囲より出っ張っている(鼻先・頬骨・あご)
+        // 負の値 = 周囲よりへこんでいる(眼窩・人中)
+        // 値は [-1, 1] に正規化する。
+
+        TArray<float> ProtrusionFine;   // 鼻先・あご・眉など細かい出っ張り
+        TArray<float> ProtrusionBroad;  // 頬・頬骨など広い出っ張り
+
+        const bool bApplyFeature = bCenterEstimated;
+
+        if (!bCenterEstimated)
+        {
+            UE_LOG(
+                LogTemp,
+                Warning,
+                TEXT("ToonShaderGenerator: 顔の球の中心を推定できなかったため、")
+                TEXT("SDFの出っ張り補正をスキップしました。")
+            );
+        }
+
+        if (bApplyFeature)
+        {
+            // 3段階のぼかしの差(Difference of Gaussians)で、大きさ別に取り出す
+            //   Fine  = Blur(小) - Blur(中) : 鼻先・あご・眉
+            //   Broad = Blur(中) - Blur(大) : 頬・頬骨(顔の側面だけに限定する)
+            // 2つを足すと、以前の「小 - 大」と同じになる。
+            const int32 FineRadius = FMath::Max(3, Resolution / 200);
+            const int32 MidRadius = FMath::Max(8, Resolution / 76);
+            const int32 BroadRadius = FMath::Max(24, Resolution / 22);
+
+            auto BlurTwice =
+                [&](const int32 Radius, TArray<float>& OutBlur)
+            {
+                // ボックスブラーを2回かけてガウシアンに近づける
+                TArray<float> Temp;
+                MaskedBoxBlur(FinalRadius, Filled, Resolution, Radius, Temp);
+                MaskedBoxBlur(Temp, Filled, Resolution, Radius, OutBlur);
+            };
+
+            TArray<float> BlurFine;
+            TArray<float> BlurMid;
+            TArray<float> BlurBroad;
+
+            BlurTwice(FineRadius, BlurFine);
+            BlurTwice(MidRadius, BlurMid);
+            BlurTwice(BroadRadius, BlurBroad);
+
+            // 差を取り、標準偏差の2倍を±1として[-1, 1]に正規化する
+            auto BuildBand =
+                [&](const TArray<float>& Minuend,
+                    const TArray<float>& Subtrahend,
+                    TArray<float>& OutBand)
+            {
+                OutBand.Init(0.0f, PixelCount);
+
+                double Sum = 0.0;
+                double SumSquare = 0.0;
+                int64 Count = 0;
+
+                for (int32 PixelIndex = 0;
+                    PixelIndex < PixelCount;
+                    ++PixelIndex)
+                {
+                    if (!Filled[PixelIndex])
+                    {
+                        continue;
+                    }
+
+                    const float Difference =
+                        Minuend[PixelIndex] - Subtrahend[PixelIndex];
+
+                    OutBand[PixelIndex] = Difference;
+
+                    Sum += Difference;
+                    SumSquare +=
+                        static_cast<double>(Difference) * Difference;
+                    ++Count;
+                }
+
+                if (Count <= 0)
+                {
+                    return;
+                }
+
+                const double Mean = Sum / static_cast<double>(Count);
+
+                const double Variance =
+                    FMath::Max(
+                        0.0,
+                        SumSquare / static_cast<double>(Count)
+                        - Mean * Mean
+                    );
+
+                const float Scale =
+                    FMath::Max(
+                        1.0e-6f,
+                        static_cast<float>(2.0 * FMath::Sqrt(Variance))
+                    );
+
+                for (int32 PixelIndex = 0;
+                    PixelIndex < PixelCount;
+                    ++PixelIndex)
+                {
+                    if (Filled[PixelIndex])
+                    {
+                        OutBand[PixelIndex] =
+                            FMath::Clamp(
+                                (OutBand[PixelIndex]
+                                    - static_cast<float>(Mean)) / Scale,
+                                -1.0f,
+                                1.0f
+                            );
+                    }
+                }
+            };
+
+            BuildBand(BlurFine, BlurMid, ProtrusionFine);
+            BuildBand(BlurMid, BlurBroad, ProtrusionBroad);
+
+            // 頬は顔の側面にある。鼻先・あご・眉(中心線付近)には広い帯域を効かせない。
+            for (int32 PixelIndex = 0;
+                PixelIndex < PixelCount;
+                ++PixelIndex)
+            {
+                if (Filled[PixelIndex])
+                {
+                    ProtrusionBroad[PixelIndex] *=
+                        FMath::SmoothStep(
+                            0.20f,
+                            0.45f,
+                            FMath::Abs(FinalLateral[PixelIndex])
+                        );
+                }
+            }
+
+            OutResult.bSDFFeatureApplied = true;
+        }
 
         const float Threshold =
             FMath::Clamp(SDFSettings.ShadowThreshold, -0.95f, 0.95f);
@@ -975,11 +1287,37 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
             const float Nf = FVector3f::DotProduct(N, Forward);
             const float Nr = FVector3f::DotProduct(N, Right);
 
-            const float RightLight =
+            float RightLight =
                 CalculateThresholdAngle(Nf, Nr);
 
-            const float LeftLight =
+            float LeftLight =
                 CalculateThresholdAngle(Nf, -Nr);
+
+            // 出っ張りは光を長く受ける(SDF値を持ち上げる)、へこみは早く影になる。
+            //   鼻先・あご・眉(Fine)と頬(Broad)を別々の強さで加算する。
+            // 元々どの角度でも点灯しない(0)ピクセルは変更しない。
+            float BandFine = 0.0f;
+            float BandBroad = 0.0f;
+
+            if (OutResult.bSDFFeatureApplied)
+            {
+                BandFine = ProtrusionFine[PixelIndex];
+                BandBroad = ProtrusionBroad[PixelIndex];
+
+                const float Bias =
+                    SDFSettings.NoseTipGain * BandFine
+                    + SDFSettings.CheekGain * BandBroad;
+
+                if (RightLight > 0.0f)
+                {
+                    RightLight = FMath::Clamp(RightLight + Bias, 0.0f, 1.0f);
+                }
+
+                if (LeftLight > 0.0f)
+                {
+                    LeftLight = FMath::Clamp(LeftLight + Bias, 0.0f, 1.0f);
+                }
+            }
 
             SDFPixels[PixelIndex] = FColor(
                 static_cast<uint8>(
@@ -990,8 +1328,16 @@ bool FToonFaceUVRasterizer::GenerateNormalPreview(
                     FMath::Clamp(
                         FMath::RoundToInt(LeftLight * 255.0f),
                         0, 255)),
-                0,
-                255
+                // B: 鼻先・あご・眉の出っ張り(0.5 = なし)
+                static_cast<uint8>(
+                    FMath::Clamp(
+                        FMath::RoundToInt((BandFine * 0.5f + 0.5f) * 255.0f),
+                        0, 255)),
+                // A: 頬・頬骨の出っ張り(0.5 = なし)
+                static_cast<uint8>(
+                    FMath::Clamp(
+                        FMath::RoundToInt((BandBroad * 0.5f + 0.5f) * 255.0f),
+                        0, 255))
             );
         }
     }

@@ -17,7 +17,11 @@ struct FToonMaterialInstanceSettings
 	// ==========================================
 	// Face Shader
 	// ==========================================
+	// 未指定ならマスターマテリアル固定の標準SDFを使う(上書きしない)
 	FSoftObjectPath FaceSDFTexturePath;
+
+	// 未指定ならマスターマテリアルの既定テクスチャのまま
+	FSoftObjectPath FaceBaseColorTexturePath;
 	
 	FSoftObjectPath FaceNormalDirectionTexturePath;
 

@@ -62,6 +62,8 @@ FToonMaterialInstanceCreator::Create(
 
     UTexture2D* FaceSDFTexture = nullptr;
 
+    UTexture2D* FaceBaseColorTexture = nullptr;
+
     UTexture2D* FaceNormalDirectionTexture = nullptr;
 
     UTexture2D* LoadedHairFlowMap = nullptr;
@@ -102,6 +104,26 @@ FToonMaterialInstanceCreator::Create(
 
 
         // --------------------------------------
+        // Face Base Color
+        // --------------------------------------
+
+        if (!Settings.FaceBaseColorTexturePath.IsNull())
+        {
+            FaceBaseColorTexture = Cast<UTexture2D>(
+                Settings.FaceBaseColorTexturePath.TryLoad()
+            );
+
+            if (!IsValid(FaceBaseColorTexture))
+            {
+                OutErrorMessage =
+                    TEXT("Face Base Color Textureを読み込めません。");
+
+                return nullptr;
+            }
+        }
+
+
+        // --------------------------------------
         // Face Normal Direction Map
         // --------------------------------------
 
@@ -126,15 +148,8 @@ FToonMaterialInstanceCreator::Create(
         // Required Texture Check
         // --------------------------------------
 
-        if (!IsValid(FaceSDFTexture)
-            && !IsValid(FaceNormalDirectionTexture))
-        {
-            OutErrorMessage = TEXT(
-                "Face SDFまたはFace Normal Mapを設定してください。"
-            );
-
-            return nullptr;
-        }
+        // FaceSDFはマスターマテリアルに標準SDFが固定で入っているため、
+        // 未指定でもよい(指定された場合のみ上書きする)
     }
 
 
@@ -425,6 +440,7 @@ FToonMaterialInstanceCreator::Create(
             // Face SDF
             // --------------------------------------
 
+            // 指定されている場合のみ、固定の標準SDFを入れ替える
             if (IsValid(FaceSDFTexture))
             {
                 CreatedInstance->SetTextureParameterValueEditorOnly(
@@ -432,6 +448,21 @@ FToonMaterialInstanceCreator::Create(
                         FName(TEXT("FaceSDFTexture"))
                     ),
                     FaceSDFTexture
+                );
+            }
+
+
+            // --------------------------------------
+            // Face Base Color Texture
+            // --------------------------------------
+
+            if (IsValid(FaceBaseColorTexture))
+            {
+                CreatedInstance->SetTextureParameterValueEditorOnly(
+                    FMaterialParameterInfo(
+                        FName(TEXT("FaceBaseColorTexture"))
+                    ),
+                    FaceBaseColorTexture
                 );
             }
 
@@ -466,11 +497,9 @@ FToonMaterialInstanceCreator::Create(
             // Shader Mode
             // --------------------------------------
 
-            // SDFがある場合はSDF方式を優先(滑らかな影の境界になる)
-            // SDFが無く、Normal Mapだけある場合のみNormal Map方式を使う
-            const bool bUseFaceNormalMap =
-                IsValid(FaceNormalDirectionTexture)
-                && !IsValid(FaceSDFTexture);
+            // マスターに標準SDFが固定で入っているため、常にSDF方式を使う
+            // (Normal Map方式は使わない。Normal Mapはパラメータとして渡すのみ)
+            const bool bUseFaceNormalMap = false;
 
             CreatedInstance->SetStaticSwitchParameterValueEditorOnly(
                 FMaterialParameterInfo(
@@ -484,14 +513,18 @@ FToonMaterialInstanceCreator::Create(
             // Face SDF Mode / Axes
             // --------------------------------------
 
-            // true  = 手描きなどの1チャンネルSDF(UVのU反転で左右を切り替える)
-            // false = プラグイン生成のRG形式(R=右光 / G=左光)
+            // true  = 1チャンネルSDF(UVのU反転で左右を切り替える)
+            //         固定の標準SDF、および手描きSDFを指定した場合
+            // false = プラグイン生成のRG形式(R=右光 / G=左光)を指定した場合のみ
+            const bool bUseGeneratedRGSDF =
+                IsValid(FaceSDFTexture)
+                && Settings.bFaceSDFIsGenerated;
+
             CreatedInstance->SetStaticSwitchParameterValueEditorOnly(
                 FMaterialParameterInfo(
                     FName(TEXT("FaceSDFSingleChannelMirror"))
                 ),
-                IsValid(FaceSDFTexture)
-                && !Settings.bFaceSDFIsGenerated
+                !bUseGeneratedRGSDF
             );
 
             // 顔のローカル空間での前方向・右方向

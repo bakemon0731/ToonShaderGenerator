@@ -1121,6 +1121,9 @@ FString SToonShaderGeneratorWidget::GetTexturePath(int32 SlotIndex, EToonTexture
     case EToonTextureInputType::FaceSDF:
         return SlotInfo.FaceSDFTexturePath.ToString();
 
+    case EToonTextureInputType::FaceBaseColor:
+        return SlotInfo.FaceBaseColorTexturePath.ToString();
+
     case EToonTextureInputType::HairFlowMap:
         return SlotInfo.HairFlowMapTexturePath.ToString();
 
@@ -1172,6 +1175,10 @@ void SToonShaderGeneratorWidget::HandleTextureChanged(const FAssetData& AssetDat
 
         // ユーザーが選んだSDFは手描き等の1チャンネルSDFとして扱う
         SlotInfo.bFaceSDFIsGenerated = false;
+        break;
+
+    case EToonTextureInputType::FaceBaseColor:
+        SlotInfo.FaceBaseColorTexturePath = TexturePath;
         break;
 
     case EToonTextureInputType::HairFlowMap:
@@ -1261,7 +1268,12 @@ void SToonShaderGeneratorWidget::RefreshMaterialInputWidgets(int32 SlotIndex)
 
         AddTextureInput(
             EToonTextureInputType::FaceSDF,
-            FText::FromString(TEXT("Face SDF Texture"))
+            FText::FromString(TEXT("Face SDF Texture(任意:未指定=標準SDF)"))
+        );
+
+        AddTextureInput(
+            EToonTextureInputType::FaceBaseColor,
+            FText::FromString(TEXT("Face Base Color(任意)"))
         );
 
         break;
@@ -1457,6 +1469,9 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
     // Face SDF
     Settings.FaceSDFTexturePath =
         SlotInfo.FaceSDFTexturePath;
+
+    Settings.FaceBaseColorTexturePath =
+        SlotInfo.FaceBaseColorTexturePath;
     
     Settings.FaceNormalDirectionTexturePath =
         SlotInfo.FaceNormalDirectionTexturePath;
@@ -2355,7 +2370,8 @@ FReply SToonShaderGeneratorWidget::HandleGenerateFaceNormalPreviewClicked()
                     "SDF Preview：\n%s\n\n"
                     "検出した顔の軸(ローカル空間)\n"
                     "Forward：(%.2f, %.2f, %.2f)\n"
-                    "Right：(%.2f, %.2f, %.2f)"
+                    "Right：(%.2f, %.2f, %.2f)\n"
+                    "出っ張り補正(鼻先・頬・あご)：%s"
                 ),
                 SlotInfo.SlotIndex,
                 *SlotInfo.SlotName.ToString(),
@@ -2372,7 +2388,8 @@ FReply SToonShaderGeneratorWidget::HandleGenerateFaceNormalPreviewClicked()
                 Result.SDFForwardAxis.Z,
                 Result.SDFRightAxis.X,
                 Result.SDFRightAxis.Y,
-                Result.SDFRightAxis.Z
+                Result.SDFRightAxis.Z,
+                Result.bSDFFeatureApplied ? TEXT("有効") : TEXT("スキップ")
             )
         );
     }
