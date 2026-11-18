@@ -50,14 +50,8 @@ struct FToonMaterialSlotInfo
 	// FaceのBaseColorテクスチャ(任意)。未指定ならマスターマテリアルの既定(白)のまま
 	FSoftObjectPath FaceBaseColorTexturePath;
 
-	// 自動生成したFace Normal Map
-	FSoftObjectPath FaceNormalDirectionTexturePath;
 
-	// FaceSDFがプラグイン生成のRG形式(R=右光/G=左光)か
-	// false = 手描きなどの1チャンネルSDF(UVのU反転で左右を切り替える)
-	bool bFaceSDFIsGenerated = false;
-
-	// 顔のローカル空間での前方向・右方向(SDF生成時に自動検出した値)
+	// 顔のローカル空間での前方向・右方向
 	FVector3f FaceForwardAxis = FVector3f(0.0f, 1.0f, 0.0f);
 	FVector3f FaceRightAxis = FVector3f(-1.0f, 0.0f, 0.0f);
 	

@@ -214,22 +214,6 @@ void FToonTextureValidator::ValidateSlot(
             OutIssues
         );
 
-        // Face Normal Direction Map(自動生成した場合のみ)
-        if (!SlotInfo.FaceNormalDirectionTexturePath.IsNull())
-        {
-            ValidateTextureInput(
-                SlotInfo,
-                TEXT("Face Normal Direction Map"),
-                SlotInfo.FaceNormalDirectionTexturePath,
-                false,
-                false,
-                true,
-                TC_VectorDisplacementmap,
-                TEXT("VectorDisplacementmap"),
-                OutIssues
-            );
-        }
-
         break;
 
 

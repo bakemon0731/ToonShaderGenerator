@@ -22,11 +22,7 @@ struct FToonMaterialInstanceSettings
 
 	// 未指定ならマスターマテリアルの既定テクスチャのまま
 	FSoftObjectPath FaceBaseColorTexturePath;
-	
-	FSoftObjectPath FaceNormalDirectionTexturePath;
 
-	// FaceSDFがプラグイン生成のRG形式か(falseなら1チャンネルSDF扱い)
-	bool bFaceSDFIsGenerated = false;
 
 	// 顔のローカル空間での前方向・右方向
 	FVector3f FaceForwardAxis = FVector3f(0.0f, 1.0f, 0.0f);

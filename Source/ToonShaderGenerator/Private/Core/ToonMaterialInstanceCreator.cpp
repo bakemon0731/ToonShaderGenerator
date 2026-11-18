@@ -64,8 +64,6 @@ FToonMaterialInstanceCreator::Create(
 
     UTexture2D* FaceBaseColorTexture = nullptr;
 
-    UTexture2D* FaceNormalDirectionTexture = nullptr;
-
     UTexture2D* LoadedHairFlowMap = nullptr;
 
     UTexture2D* LoadedSkinBaseColorTexture = nullptr;
@@ -117,27 +115,6 @@ FToonMaterialInstanceCreator::Create(
             {
                 OutErrorMessage =
                     TEXT("Face Base Color Textureを読み込めません。");
-
-                return nullptr;
-            }
-        }
-
-
-        // --------------------------------------
-        // Face Normal Direction Map
-        // --------------------------------------
-
-        if (!Settings.FaceNormalDirectionTexturePath.IsNull())
-        {
-            FaceNormalDirectionTexture =
-                Cast<UTexture2D>(
-                    Settings.FaceNormalDirectionTexturePath.TryLoad()
-                );
-
-            if (!IsValid(FaceNormalDirectionTexture))
-            {
-                OutErrorMessage =
-                    TEXT("Face Normal Direction Textureを読み込めません。");
 
                 return nullptr;
             }
@@ -479,52 +456,16 @@ FToonMaterialInstanceCreator::Create(
 
 
             // --------------------------------------
-            // Face Normal Direction Map
-            // --------------------------------------
-
-            if (IsValid(FaceNormalDirectionTexture))
-            {
-                CreatedInstance->SetTextureParameterValueEditorOnly(
-                    FMaterialParameterInfo(
-                        FName(TEXT("FaceNormalDirectionTexture"))
-                    ),
-                    FaceNormalDirectionTexture
-                );
-            }
-
-
-            // --------------------------------------
-            // Shader Mode
-            // --------------------------------------
-
-            // マスターに標準SDFが固定で入っているため、常にSDF方式を使う
-            // (Normal Map方式は使わない。Normal Mapはパラメータとして渡すのみ)
-            const bool bUseFaceNormalMap = false;
-
-            CreatedInstance->SetStaticSwitchParameterValueEditorOnly(
-                FMaterialParameterInfo(
-                    FName(TEXT("UseFaceNormalDirectionMap"))
-                ),
-                bUseFaceNormalMap
-            );
-
-
-            // --------------------------------------
             // Face SDF Mode / Axes
             // --------------------------------------
 
-            // true  = 1チャンネルSDF(UVのU反転で左右を切り替える)
-            //         固定の標準SDF、および手描きSDFを指定した場合
-            // false = プラグイン生成のRG形式(R=右光 / G=左光)を指定した場合のみ
-            const bool bUseGeneratedRGSDF =
-                IsValid(FaceSDFTexture)
-                && Settings.bFaceSDFIsGenerated;
-
+            // FaceSDFは固定・任意指定のどちらも1チャンネルSDF
+            // (UVのU反転で左右を切り替える)なので常にtrue
             CreatedInstance->SetStaticSwitchParameterValueEditorOnly(
                 FMaterialParameterInfo(
                     FName(TEXT("FaceSDFSingleChannelMirror"))
                 ),
-                !bUseGeneratedRGSDF
+                true
             );
 
             // 顔のローカル空間での前方向・右方向
@@ -552,21 +493,6 @@ FToonMaterialInstanceCreator::Create(
                 )
             );
 
-
-            // --------------------------------------
-            // Face Normal Shadow Threshold
-            // --------------------------------------
-
-            CreatedInstance->SetScalarParameterValueEditorOnly(
-                FMaterialParameterInfo(
-                    FName(TEXT("FaceNormalShadowThreshold"))
-                ),
-                FMath::Clamp(
-                    Settings.Basic.ShadowThreshold,
-                    0.0f,
-                    1.0f
-                )
-            );
 
             break;
         }    
