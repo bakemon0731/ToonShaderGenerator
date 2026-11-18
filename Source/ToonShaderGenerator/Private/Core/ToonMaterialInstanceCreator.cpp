@@ -444,6 +444,21 @@ FToonMaterialInstanceCreator::Create(
             }
 
 
+            // FaceSDFをサンプルするUVのV方向の位置・大きさ
+            CreatedInstance->SetScalarParameterValueEditorOnly(
+                FMaterialParameterInfo(
+                    FName(TEXT("FaceSDFVOffset"))
+                ),
+                Settings.FaceSDFVOffset
+            );
+
+            CreatedInstance->SetScalarParameterValueEditorOnly(
+                FMaterialParameterInfo(
+                    FName(TEXT("FaceSDFVScale"))
+                ),
+                FMath::Max(Settings.FaceSDFVScale, 0.01f)
+            );
+
             CreatedInstance->SetScalarParameterValueEditorOnly(
                 FMaterialParameterInfo(
                     FName(TEXT("FaceBoundarySoftness"))

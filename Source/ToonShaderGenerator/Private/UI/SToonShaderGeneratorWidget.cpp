@@ -1216,6 +1216,58 @@ void SToonShaderGeneratorWidget::RefreshMaterialInputWidgets(int32 SlotIndex)
             ];
         };
     
+    // 数値入力欄の追加処理(Slotごとの値を直接読み書きする)
+    auto AddFloatInput =
+        [this, SlotIndex, InputBox](
+            const FText& Label,
+            float MinValue,
+            float MaxValue,
+            float Delta,
+            TFunction<float(const FToonMaterialSlotInfo&)> Getter,
+            TFunction<void(FToonMaterialSlotInfo&, float)> Setter)
+        {
+            InputBox->AddSlot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(Label)
+                ]
+
+                + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                [
+                    SNew(SSpinBox<float>)
+                    .MinValue(MinValue)
+                    .MaxValue(MaxValue)
+                    .Delta(Delta)
+                    .Value_Lambda(
+                        [this, SlotIndex, Getter]()
+                        {
+                            return CurrentSlotInfos.IsValidIndex(SlotIndex)
+                                ? Getter(CurrentSlotInfos[SlotIndex])
+                                : 0.0f;
+                        }
+                    )
+                    .OnValueChanged_Lambda(
+                        [this, SlotIndex, Setter](float NewValue)
+                        {
+                            if (CurrentSlotInfos.IsValidIndex(SlotIndex))
+                            {
+                                Setter(CurrentSlotInfos[SlotIndex], NewValue);
+                            }
+                        }
+                    )
+                ]
+            ];
+        };
+
     // Material Slotの用途を確認
     switch (MaterialType)
     {
@@ -1229,6 +1281,33 @@ void SToonShaderGeneratorWidget::RefreshMaterialInputWidgets(int32 SlotIndex)
         AddTextureInput(
             EToonTextureInputType::FaceBaseColor,
             FText::FromString(TEXT("Face Base Color(任意)"))
+        );
+
+        // FaceSDFをサンプルするUVの位置・大きさ(V方向)
+        AddFloatInput(
+            FText::FromString(TEXT("SDF V位置オフセット")),
+            -0.5f, 0.5f, 0.005f,
+            [](const FToonMaterialSlotInfo& Info)
+            {
+                return Info.FaceSDFVOffset;
+            },
+            [](FToonMaterialSlotInfo& Info, float Value)
+            {
+                Info.FaceSDFVOffset = Value;
+            }
+        );
+
+        AddFloatInput(
+            FText::FromString(TEXT("SDF V方向の大きさ")),
+            0.1f, 3.0f, 0.01f,
+            [](const FToonMaterialSlotInfo& Info)
+            {
+                return Info.FaceSDFVScale;
+            },
+            [](FToonMaterialSlotInfo& Info, float Value)
+            {
+                Info.FaceSDFVScale = Value;
+            }
         );
 
         break;
@@ -1427,10 +1506,10 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
 
     Settings.FaceBaseColorTexturePath =
         SlotInfo.FaceBaseColorTexturePath;
-    
-    Settings.FaceForwardAxis = SlotInfo.FaceForwardAxis;
-    Settings.FaceRightAxis = SlotInfo.FaceRightAxis;
-    
+
+    Settings.FaceSDFVOffset = SlotInfo.FaceSDFVOffset;
+    Settings.FaceSDFVScale = SlotInfo.FaceSDFVScale;
+
     // Skin Base
     Settings.SkinBaseColorTexturePath =
         SlotInfo.SkinBaseColorTexturePath;

@@ -24,6 +24,11 @@ struct FToonMaterialInstanceSettings
 	FSoftObjectPath FaceBaseColorTexturePath;
 
 
+	// FaceSDFをサンプルするUVの調整
+	// サンプルV = (V - 0.5) * FaceSDFVScale + 0.5 + FaceSDFVOffset
+	float FaceSDFVOffset = 0.0f;
+	float FaceSDFVScale = 1.0f;
+
 	// 顔のローカル空間での前方向・右方向
 	FVector3f FaceForwardAxis = FVector3f(0.0f, 1.0f, 0.0f);
 	FVector3f FaceRightAxis = FVector3f(-1.0f, 0.0f, 0.0f);
