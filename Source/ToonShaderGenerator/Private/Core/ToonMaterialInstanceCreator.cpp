@@ -16,6 +16,36 @@
 #include "Misc/PackageName.h"
 
 
+namespace
+{
+    // マスターマテリアルに指定の種類・名前のパラメータがあるか調べる
+    bool HasMaterialParameter(
+        const UMaterialInterface* Material,
+        EMaterialParameterType Type,
+        const TCHAR* Name)
+    {
+        if (!IsValid(Material))
+        {
+            return false;
+        }
+
+        TMap<FMaterialParameterInfo, FMaterialParameterMetadata> Parameters;
+
+        Material->GetAllParametersOfType(Type, Parameters);
+
+        for (const TPair<FMaterialParameterInfo, FMaterialParameterMetadata>& Pair : Parameters)
+        {
+            if (Pair.Key.Name == FName(Name))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+
 UMaterialInstanceConstant*
 FToonMaterialInstanceCreator::Create(
     UMaterialInterface* ParentMaterial,
@@ -65,6 +95,11 @@ FToonMaterialInstanceCreator::Create(
     UTexture2D* FaceBaseColorTexture = nullptr;
 
     UTexture2D* LoadedHairFlowMap = nullptr;
+
+    UTexture2D* LoadedHairBaseColor = nullptr;
+
+    // マスター側のHair BaseColorテクスチャのパラメータ名
+    FName HairBaseColorTextureParamName = NAME_None;
 
     UTexture2D* LoadedSkinBaseColorTexture = nullptr;
 
@@ -133,6 +168,49 @@ FToonMaterialInstanceCreator::Create(
     // ==========================================
     // 4. Hair Texture Load
     // ==========================================
+
+    if (Settings.MaterialType == EToonMaterialType::Hair
+        && !Settings.HairBaseColorTexturePath.IsNull())
+    {
+        LoadedHairBaseColor = Cast<UTexture2D>(
+            Settings.HairBaseColorTexturePath.TryLoad()
+        );
+
+        if (!IsValid(LoadedHairBaseColor))
+        {
+            OutErrorMessage = TEXT(
+                "Hair Base Color Textureの読み込みに失敗しました。"
+            );
+
+            return nullptr;
+        }
+
+        // マスター側のパラメータ名を判定する
+        // (HairBaseColorTexture を優先し、無ければ HairBaseColor)
+        if (HasMaterialParameter(
+            ParentMaterial,
+            EMaterialParameterType::Texture,
+            TEXT("HairBaseColorTexture")))
+        {
+            HairBaseColorTextureParamName = FName(TEXT("HairBaseColorTexture"));
+        }
+        else if (HasMaterialParameter(
+            ParentMaterial,
+            EMaterialParameterType::Texture,
+            TEXT("HairBaseColor")))
+        {
+            HairBaseColorTextureParamName = FName(TEXT("HairBaseColor"));
+        }
+        else
+        {
+            OutErrorMessage = TEXT(
+                "マスターマテリアルにHair BaseColorのテクスチャパラメータ"
+                "(HairBaseColorTexture または HairBaseColor)がありません。"
+            );
+
+            return nullptr;
+        }
+    }
 
     if (Settings.MaterialType == EToonMaterialType::Hair
         && Settings.bUseHairFlowMap)
@@ -518,54 +596,58 @@ FToonMaterialInstanceCreator::Create(
     // ==========================================
 
     case EToonMaterialType::Hair:
+    {
+        // パラメータ設定の補助
+        auto SetScalar = [CreatedInstance](const TCHAR* Name, float Value)
+        {
+            CreatedInstance->SetScalarParameterValueEditorOnly(
+                FMaterialParameterInfo(FName(Name)),
+                Value
+            );
+        };
 
-        // Base Color
-        CreatedInstance->SetVectorParameterValueEditorOnly(
-            FMaterialParameterInfo(
-                FName(TEXT("HairBaseColor"))
-            ),
-            Settings.Basic.BaseColor
+        auto SetColor = [CreatedInstance](const TCHAR* Name, const FLinearColor& Value)
+        {
+            CreatedInstance->SetVectorParameterValueEditorOnly(
+                FMaterialParameterInfo(FName(Name)),
+                Value
+            );
+        };
+
+        const FToonHairSettings& Hair = Settings.Hair;
+
+        // 基本の色・影の境界(共通設定)
+        // HairBaseColorがVectorパラメータの場合のみ設定する
+        // (テクスチャパラメータの場合は下で設定する)
+        if (HasMaterialParameter(
+            ParentMaterial,
+            EMaterialParameterType::Vector,
+            TEXT("HairBaseColor")))
+        {
+            SetColor(TEXT("HairBaseColor"), Settings.Basic.BaseColor);
+        }
+
+        // Hair Base Color Texture
+        if (IsValid(LoadedHairBaseColor)
+            && !HairBaseColorTextureParamName.IsNone())
+        {
+            CreatedInstance->SetTextureParameterValueEditorOnly(
+                FMaterialParameterInfo(HairBaseColorTextureParamName),
+                LoadedHairBaseColor
+            );
+        }
+
+        SetColor(TEXT("HairShadowColor"), Settings.Basic.ShadowColor);
+
+        SetScalar(
+            TEXT("HairShadowThreshold"),
+            FMath::Clamp(Settings.Basic.ShadowThreshold, 0.0f, 1.0f)
         );
 
-
-        // Roughness
-        CreatedInstance->SetScalarParameterValueEditorOnly(
-            FMaterialParameterInfo(
-                FName(TEXT("HairRoughness"))
-            ),
-            FMath::Clamp(
-                Settings.HairRoughness,
-                0.0f,
-                1.0f
-            )
-        );
-
-
-        // Specular
-        CreatedInstance->SetScalarParameterValueEditorOnly(
-            FMaterialParameterInfo(
-                FName(TEXT("HairSpecular"))
-            ),
-            FMath::Clamp(
-                Settings.HairSpecular,
-                0.0f,
-                1.0f
-            )
-        );
-
-
-        // Anisotropy
-        CreatedInstance->SetScalarParameterValueEditorOnly(
-            FMaterialParameterInfo(
-                FName(TEXT("HairAnisotropy"))
-            ),
-            FMath::Clamp(
-                Settings.HairAnisotropy,
-                0.0f,
-                1.0f
-            )
-        );
-
+        // 陰影(毛束方向)
+        SetScalar(TEXT("HairShadowSoftness"), FMath::Max(Hair.ShadowSoftness, 0.0f));
+        SetScalar(TEXT("HairFlowNormalBlend"), FMath::Clamp(Hair.FlowNormalBlend, 0.0f, 1.0f));
+        SetScalar(TEXT("HairStrandDiffuseBlend"), FMath::Clamp(Hair.StrandDiffuseBlend, 0.0f, 1.0f));
 
         // Flow Map Texture
         if (Settings.bUseHairFlowMap
@@ -589,6 +671,7 @@ FToonMaterialInstanceCreator::Create(
         );
 
         break;
+    }
 
 
     // ==========================================

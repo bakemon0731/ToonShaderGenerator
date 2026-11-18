@@ -18,6 +18,7 @@ enum class EToonTextureInputType : uint8
 {
 	FaceSDF,
 	FaceBaseColor,
+	HairBaseColor,
 	HairFlowMap,
 	SkinBaseColor,
 	ClothingBaseColor,
@@ -61,6 +62,9 @@ struct FToonMaterialSlotInfo
 	FVector3f FaceRightAxis = FVector3f(-1.0f, 0.0f, 0.0f);
 	
 	// Hair用
+	// HairのBaseColorテクスチャ(任意)
+	FSoftObjectPath HairBaseColorTexturePath;
+
 	FSoftObjectPath HairFlowMapTexturePath;
 	
 	// Skin用

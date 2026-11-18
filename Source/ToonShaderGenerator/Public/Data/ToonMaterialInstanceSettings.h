@@ -4,6 +4,7 @@
 
 #include "Data/ToonBasicMaterialSettings.h"
 #include "Data/ToonMaterialSlotInfo.h"
+#include "Data/ToonHairSettings.h"
 
 // Material Instance生成時の設定
 struct FToonMaterialInstanceSettings
@@ -38,13 +39,12 @@ struct FToonMaterialInstanceSettings
 	// ==========================================
 	// Hair Shader
 	// ==========================================
+	FSoftObjectPath HairBaseColorTexturePath;
+
 	FSoftObjectPath HairFlowMapTexturePath;
 	
-	float HairAnisotropy = 0.8f;
-	
-	float HairRoughness = 0.35f;
-	
-	float HairSpecular = 0.5f;
+	// Hairのトゥーン設定(ハイライト・毛束方向の陰影)
+	FToonHairSettings Hair;
 	
 	// Flow Mapの有効・無効
 	bool bUseHairFlowMap = false;

@@ -99,6 +99,18 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
         SNew(SBorder)
         .Padding(FMargin(20.0f))
         [
+            SNew(SHorizontalBox)
+
+            // ==========================================
+            // 左：設定(縦に長くなるのでスクロール可能にする)
+            // ==========================================
+            + SHorizontalBox::Slot()
+            .FillWidth(0.4f)
+            .Padding(0.0f, 0.0f, 12.0f, 0.0f)
+            [
+              SNew(SScrollBox)
+              + SScrollBox::Slot()
+              [
             SNew(SVerticalBox)
 
             // タイトル
@@ -328,89 +340,8 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
 
             + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(0.0f, 4.0f)
             [
-                SNew(SHorizontalBox)
-
-                + SHorizontalBox::Slot()
-                .FillWidth(1.0f)
-                .VAlign(VAlign_Center)
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Roughness")))
-                ]
-
-                + SHorizontalBox::Slot()
-                .FillWidth(1.0f)
-                [
-                    SNew(SSpinBox<float>)
-                    .MinValue(0.0f)
-                    .MaxValue(1.0f)
-                    .Delta(0.01f)
-                    .Value(HairRoughness)
-                    .OnValueChanged(
-                        this,
-                        &SToonShaderGeneratorWidget::HandleHairRoughnessChanged
-                    )    
-                ]
-            ]
-
-            +SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(0.0f, 4.0f)
-            [
-                SNew(SHorizontalBox)
-
-                + SHorizontalBox::Slot()
-                .FillWidth(1.0f)
-                .VAlign(VAlign_Center)
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Specular")))
-                ]
-
-                + SHorizontalBox::Slot()
-                .FillWidth(1.0f)
-                [
-                    SNew(SSpinBox<float>)
-                    .MinValue(0.0f)
-                    .MaxValue(1.0f)
-                    .Delta(0.01f)
-                    .Value(HairSpecular)
-                    .OnValueChanged(
-                        this,
-                        &SToonShaderGeneratorWidget::HandleHairSpecularChanged
-                    )    
-                ]
-            ]
-
-            +SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(0.0f, 4.0f)
-            [
-                SNew(SHorizontalBox)
-
-                + SHorizontalBox::Slot()
-                .FillWidth(1.0f)
-                .VAlign(VAlign_Center)
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Anisotropy")))
-                ]
-
-                + SHorizontalBox::Slot()
-                .FillWidth(1.0f)
-                [
-                    SNew(SSpinBox<float>)
-                    .MinValue(0.0f)
-                    .MaxValue(1.0f)
-                    .Delta(0.01f)
-                    .Value(HairAnisotropy)
-                    .OnValueChanged(
-                        this,
-                        &SToonShaderGeneratorWidget::HandleHairAnisotropyChanged
-                    )    
-                ]
+                CreateHairSettingsWidget()
             ]
 
             +SVerticalBox::Slot()
@@ -529,24 +460,37 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
                 ]
             ]
             
-            // Slot一覧
-            + SVerticalBox::Slot()
-            .FillHeight(1.0f)
-            [
-                SNew(SScrollBox)
-                + SScrollBox::Slot()
-                [
-                    SAssignNew(MaterialSlotListBox, SVerticalBox)
-                ]
+              ]
             ]
 
-            // 状態表示
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(0.0f, 12.0f, 0.0f, 0.0f)
+            // ==========================================
+            // 右：Slot一覧(横に並べて、単独でスクロール可能)
+            // ==========================================
+            + SHorizontalBox::Slot()
+            .FillWidth(0.6f)
             [
-                SAssignNew(StatusText, STextBlock)
-                .Text(FText::FromString(TEXT("状態：待機中")))
+                SNew(SVerticalBox)
+
+                // Slot一覧
+                + SVerticalBox::Slot()
+                .FillHeight(1.0f)
+                [
+                    SNew(SScrollBox)
+                    + SScrollBox::Slot()
+                    [
+                        SAssignNew(MaterialSlotListBox, SVerticalBox)
+                    ]
+                ]
+
+                // 状態表示
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 12.0f, 0.0f, 0.0f)
+                [
+                    SAssignNew(StatusText, STextBlock)
+                    .Text(FText::FromString(TEXT("状態：待機中")))
+                    .AutoWrapText(true)
+                ]
             ]
         ]
     ];
@@ -1082,6 +1026,9 @@ FString SToonShaderGeneratorWidget::GetTexturePath(int32 SlotIndex, EToonTexture
     case EToonTextureInputType::FaceBaseColor:
         return SlotInfo.FaceBaseColorTexturePath.ToString();
 
+    case EToonTextureInputType::HairBaseColor:
+        return SlotInfo.HairBaseColorTexturePath.ToString();
+
     case EToonTextureInputType::HairFlowMap:
         return SlotInfo.HairFlowMapTexturePath.ToString();
 
@@ -1134,6 +1081,10 @@ void SToonShaderGeneratorWidget::HandleTextureChanged(const FAssetData& AssetDat
 
     case EToonTextureInputType::FaceBaseColor:
         SlotInfo.FaceBaseColorTexturePath = TexturePath;
+        break;
+
+    case EToonTextureInputType::HairBaseColor:
+        SlotInfo.HairBaseColorTexturePath = TexturePath;
         break;
 
     case EToonTextureInputType::HairFlowMap:
@@ -1315,6 +1266,11 @@ void SToonShaderGeneratorWidget::RefreshMaterialInputWidgets(int32 SlotIndex)
     case EToonMaterialType::Hair:
 
         AddTextureInput(
+            EToonTextureInputType::HairBaseColor,
+            FText::FromString(TEXT("Hair Base Color(任意)"))
+        );
+
+        AddTextureInput(
             EToonTextureInputType::HairFlowMap,
             FText::FromString(TEXT("Hair Flow Map"))
         );
@@ -1493,11 +1449,10 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
     Settings.Basic = BasicMaterialSettings;
     
     // Hair Shader Settings
-    Settings.HairRoughness = HairRoughness;
-    Settings.HairSpecular = HairSpecular;
-    Settings.HairAnisotropy = HairAnisotropy;
+    Settings.Hair = HairSettings;
 
     Settings.bUseHairFlowMap = bUseHairFlowMap;
+    Settings.HairBaseColorTexturePath = SlotInfo.HairBaseColorTexturePath;
     Settings.HairFlowMapTexturePath = SlotInfo.HairFlowMapTexturePath;
     
     // Face SDF
@@ -2072,19 +2027,64 @@ void SToonShaderGeneratorWidget::HandleShadowThresholdChanged(float NewValue)
     BasicMaterialSettings.ShadowThreshold = FMath::Clamp(NewValue, 0.0f, 1.0f);
 }
 
-void SToonShaderGeneratorWidget::HandleHairRoughnessChanged(float NewValue)
+TSharedRef<SWidget> SToonShaderGeneratorWidget::CreateHairSettingsWidget()
 {
-    HairRoughness = FMath::Clamp(NewValue, 0.0f, 1.0f);
-}
+    TSharedRef<SVerticalBox> Box = SNew(SVerticalBox);
 
-void SToonShaderGeneratorWidget::HandleHairSpecularChanged(float NewValue)
-{
-    HairSpecular = FMath::Clamp(NewValue, 0.0f, 1.0f);
-}
+    // 見出し
+    auto AddHeader = [Box](const TCHAR* Text)
+    {
+        Box->AddSlot()
+        .AutoHeight()
+        .Padding(0.0f, 8.0f, 0.0f, 2.0f)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(Text))
+        ];
+    };
 
-void SToonShaderGeneratorWidget::HandleHairAnisotropyChanged(float NewValue)
-{
-    HairAnisotropy = FMath::Clamp(NewValue, 0.0f, 1.0f);
+    // 数値入力(値のポインタを直接読み書きする)
+    auto AddFloat =
+        [Box](const TCHAR* Label, float* Value, float MinValue, float MaxValue, float Delta)
+    {
+        Box->AddSlot()
+        .AutoHeight()
+        .Padding(0.0f, 2.0f)
+        [
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(Label))
+            ]
+
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            [
+                SNew(SSpinBox<float>)
+                .MinValue(MinValue)
+                .MaxValue(MaxValue)
+                .Delta(Delta)
+                .Value_Lambda([Value]() { return *Value; })
+                .OnValueChanged_Lambda(
+                    [Value, MinValue, MaxValue](float NewValue)
+                    {
+                        *Value = FMath::Clamp(NewValue, MinValue, MaxValue);
+                    }
+                )
+            ]
+        ];
+    };
+
+    AddHeader(TEXT("陰影(毛束方向)"));
+    AddFloat(TEXT("Shadow Softness"), &HairSettings.ShadowSoftness, 0.0f, 0.5f, 0.005f);
+    AddFloat(TEXT("Flow Normal Blend"), &HairSettings.FlowNormalBlend, 0.0f, 1.0f, 0.01f);
+    AddFloat(TEXT("Strand Diffuse Blend"), &HairSettings.StrandDiffuseBlend, 0.0f, 1.0f, 0.01f);
+
+    return Box;
 }
 
 // ==================================================

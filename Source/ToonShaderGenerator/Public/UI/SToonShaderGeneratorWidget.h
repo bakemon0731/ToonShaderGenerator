@@ -4,6 +4,7 @@
 #include "CoreMinimal.h"
 #include "Data/ToonMaterialSlotInfo.h"
 #include "Data/ToonBasicMaterialSettings.h"
+#include "Data/ToonHairSettings.h"
 #include "Data/ToonValidationIssue.h"
 #include "UObject/SoftObjectPath.h"
 #include "Widgets/SCompoundWidget.h"
@@ -29,9 +30,7 @@ public:
 	FToonBasicMaterialSettings BasicMaterialSettings;
 	
 	// Hair Shader Settings
-	float HairRoughness = 0.35f;
-	float HairSpecular = 0.5f;
-	float HairAnisotropy = 0.8f;
+	FToonHairSettings HairSettings;
 	bool bUseHairFlowMap = false;
 	
 	// Material名表示WidgetをSlotごとに保持
@@ -138,9 +137,9 @@ private:
 	
 private:
 	
-	void HandleHairRoughnessChanged(float NewValue);
-	void HandleHairSpecularChanged(float NewValue);
-	void HandleHairAnisotropyChanged(float NewValue);
+	// Hairシェーダー設定の入力欄を作成
+	TSharedRef<SWidget> CreateHairSettingsWidget();
+
 	
 private:
 	// Face Mesh Analysis

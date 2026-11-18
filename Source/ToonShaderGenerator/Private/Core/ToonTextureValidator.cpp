@@ -225,6 +225,18 @@ void FToonTextureValidator::ValidateSlot(
 
         ValidateTextureInput(
             SlotInfo,
+            TEXT("Hair Base Color"),
+            SlotInfo.HairBaseColorTexturePath,
+            false,
+            true,
+            false,
+            TC_Default,
+            TEXT("Default"),
+            OutIssues
+        );
+
+        ValidateTextureInput(
+            SlotInfo,
             TEXT("Hair Flow Map"),
             SlotInfo.HairFlowMapTexturePath,
             bUseHairFlowMap,
