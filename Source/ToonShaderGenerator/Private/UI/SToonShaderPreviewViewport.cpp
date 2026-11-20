@@ -108,21 +108,42 @@ void SToonShaderPreviewViewport::SetPreviewSkeletalMesh(USkeletalMesh* NewMesh)
 		true
 	);
 	
-	// カメラをMeshに合わせる
-	const FBoxSphereBounds MeshBounds = PreviewMeshComponent->Bounds;
-	const TSharedPtr<FEditorViewportClient> ViewportClient = GetViewportClient();
-	if (ViewportClient.IsValid())
+	// Meshに合わせてカメラを初期化
+	ResetCamera();
+}
+
+// ==================================================
+// カメラを初期視点に戻す
+// ==================================================
+void SToonShaderPreviewViewport::ResetCamera()
+{
+	// プレビュー中のMeshが存在しない場合
+	if (!IsValid(PreviewMeshComponent))
 	{
-		const float CameraDistance = FMath::Max(MeshBounds.SphereRadius * 2.5f, 300.0f);
-		
-		ViewportClient->SetViewLocationForOrbiting(
-			MeshBounds.Origin,
-			CameraDistance
-		);	
-		
-		// Viewport Client側に再描画を要求
-		ViewportClient->Invalidate(false, false);
+		return;
 	}
-	// ビューポートの再描画
+	
+	// Viewport Clientを取得
+	const TSharedPtr<FEditorViewportClient> ViewportClient = GetViewportClient();
+	
+	if (!ViewportClient.IsValid())
+	{
+		return;
+	}
+	
+	// Meshの大きさと中心位置を取得
+	const FBoxSphereBounds MeshBounds = PreviewMeshComponent->Bounds;
+	
+	// Meshのサイズからカメラ距離を計算
+	const float CameraDistance = FMath::Max(MeshBounds.SphereRadius * 2.5f, 300.0f);
+	
+	// 初期角度に戻す
+	ViewportClient->SetViewRotation(FRotator(-10.0f, 0.0f, 0.0f));
+	
+	// Meshの中心にカメラを合わせる
+	ViewportClient->SetViewLocationForOrbiting(MeshBounds.Origin, CameraDistance);
+	
+	// 再描画
+	ViewportClient->Invalidate(false, false);
 	Invalidate();
 }

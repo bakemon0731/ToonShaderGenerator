@@ -120,6 +120,41 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
                     SNew(STextBlock)
                     .Text(FText::FromString(TEXT("3Dプレビュー")))
                 ]
+                
+                // プレビュー操作
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 8.0f)
+                [
+                    SNew(SHorizontalBox)
+
+                    // 操作説明
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                        .Text(
+                            FText::FromString(
+                                TEXT("Alt + 左：回転 / 中：移動 / 右：ズーム")
+                            )
+                        )
+                        .AutoWrapText(true)
+                    ]
+
+                    // 視点リセット
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    [
+                        SNew(SButton)
+                        .Text(FText::FromString(TEXT("視点リセット")))
+                        .OnClicked(
+                            this,
+                            &SToonShaderGeneratorWidget::
+                                HandleResetPreviewCameraClicked
+                        )
+                    ]
+                ]
 
                 // 3Dビューポート
                 + SVerticalBox::Slot()
@@ -2330,5 +2365,17 @@ FReply SToonShaderGeneratorWidget::HandleAnalyzeFaceSlotsClicked()
         )
     );
 
+    return FReply::Handled();
+}
+
+// ==================================================
+// プレビューカメラリセット
+// ==================================================
+FReply SToonShaderGeneratorWidget::HandleResetPreviewCameraClicked()
+{
+    if (PreviewViewport.IsValid())
+    {
+        PreviewViewport->ResetCamera();
+    }
     return FReply::Handled();
 }

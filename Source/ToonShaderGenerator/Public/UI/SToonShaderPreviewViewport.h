@@ -21,6 +21,9 @@ public:
 	
 	// プレビューするSkeletal Meshを設定
 	void SetPreviewSkeletalMesh(USkeletalMesh* NewMesh);
+	
+	// カメラを初期視点に戻す
+	void ResetCamera();
 
 protected:
 
