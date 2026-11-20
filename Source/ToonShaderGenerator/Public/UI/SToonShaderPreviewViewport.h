@@ -8,6 +8,8 @@ class FAdvancedPreviewScene;
 class USkeletalMesh;
 class USkeletalMeshComponent;
 class UMaterialInterface;
+class UTexture;
+
 
 class SToonShaderPreviewViewport : public SEditorViewport
 {
@@ -31,6 +33,27 @@ public:
 	
 	// プレビューのMaterialを元の状態に戻す
 	bool RestorePreviewMaterialForSlot(int32 SlotIndex);
+	
+	// プレビューMaterialのパラメータを更新
+	bool UpdatePreviewMaterialParameters(
+		int32 SlotIndex,
+		
+		FName BaseColorParameterName,
+		const FLinearColor& BaseColor,
+		
+		FName ShadowColorParameterName,
+		const FLinearColor& ShadowColor,
+		
+		FName ShadowThresholdParameterName,
+		float ShadowThreshold
+	);	
+	
+	// プレビュー専用MaterialのTextureを更新
+	bool SetPreviewTextureParameter(
+		int32 SlotIndex,
+		FName ParameterName,
+		UTexture* Texture
+	);	
 
 protected:
 

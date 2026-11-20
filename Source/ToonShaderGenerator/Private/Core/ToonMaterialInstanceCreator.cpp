@@ -15,7 +15,6 @@
 
 #include "Misc/PackageName.h"
 
-
 namespace
 {
     // マスターマテリアルに指定の種類・名前のパラメータがあるか調べる
@@ -52,9 +51,11 @@ FToonMaterialInstanceCreator::Create(
     const FString& AssetName,
     const FString& PackagePath,
     const FToonMaterialInstanceSettings& Settings,
+    bool& bOutWasUpdated,
     FString& OutErrorMessage)
 {
     OutErrorMessage.Reset();
+    bOutWasUpdated = false;
 
 
     // ==========================================
@@ -364,66 +365,107 @@ FToonMaterialInstanceCreator::Create(
 
 
     // ==========================================
-    // 8. AssetTools取得
+    // 8. Assetの検索・生成
     // ==========================================
 
-    IAssetTools& AssetTools =
-        FAssetToolsModule::GetModule().Get();
-
-
-    // ==========================================
-    // 9. 重複しない名前を作成
-    // ==========================================
-
-    FString UniquePackageName;
-    FString UniqueAssetName;
-
-    AssetTools.CreateUniqueAssetName(
-        BasePackageName,
-        TEXT("_"),
-        UniquePackageName,
-        UniqueAssetName
+    const FString ObjectPath = FString::Printf(
+        TEXT("%s.%s"),
+        *BasePackageName,
+        *AssetName
     );
 
-    const FString UniquePackagePath =
-        FPackageName::GetLongPackagePath(
-            UniquePackageName
+    // Undo対応のトランザクション
+    const FScopedTransaction Transaction(
+        NSLOCTEXT(
+            "ToonShaderGenerator",
+            "GenerateOrUpdateMI",
+            "Generate or Update Toon Material Instance"
+        )
+    );
+
+    // ==========================================
+    // 既存アセットを検索
+    // ==========================================
+
+    UObject* ExistingObject =
+        LoadObject<UObject>(
+            nullptr,
+            *ObjectPath
         );
 
-
-    // ==========================================
-    // 10. Factory生成
-    // ==========================================
-
-    UMaterialInstanceConstantFactoryNew* Factory =
-        NewObject<UMaterialInstanceConstantFactoryNew>();
-
-    Factory->InitialParent = ParentMaterial;
-
-
-    // ==========================================
-    // 11. Material Instance生成
-    // ==========================================
-
-    UObject* CreatedObject = AssetTools.CreateAsset(
-        UniqueAssetName,
-        UniquePackagePath,
-        UMaterialInstanceConstant::StaticClass(),
-        Factory,
-        FName(TEXT("ToonShaderGenerator"))
-    );
-
     UMaterialInstanceConstant* CreatedInstance =
-        Cast<UMaterialInstanceConstant>(CreatedObject);
+        Cast<UMaterialInstanceConstant>(ExistingObject);
 
-    if (!IsValid(CreatedInstance))
+
+    // ==========================================
+    // 既存アセットがある場合
+    // ==========================================
+
+    if (IsValid(ExistingObject))
     {
-        OutErrorMessage =
-            TEXT("Material Instanceの生成に失敗しました。");
+        // Material Instance以外なら上書きしない
+        if (!IsValid(CreatedInstance))
+        {
+            OutErrorMessage =
+                TEXT("同じ名前の別種類のアセットが存在します。");
 
-        return nullptr;
+            return nullptr;
+        }
+
+        bOutWasUpdated = true;
+
+        // Undo用に変更前の状態を記録
+        CreatedInstance->Modify();
+
+        // Parent Materialを確認
+        if (CreatedInstance->GetMaterial() != ParentMaterial)
+        {
+            CreatedInstance->SetParentEditorOnly(
+                ParentMaterial,
+                true
+            );
+        }
+
+        // 古いパラメータをすべてクリア
+        CreatedInstance->ClearParameterValuesEditorOnly();
     }
 
+
+    // ==========================================
+    // 新規アセットの場合
+    // ==========================================
+
+    else
+    {
+        IAssetTools& AssetTools =
+            FAssetToolsModule::GetModule().Get();
+
+        UMaterialInstanceConstantFactoryNew* Factory =
+            NewObject<UMaterialInstanceConstantFactoryNew>();
+
+        Factory->InitialParent = ParentMaterial;
+
+        UObject* CreatedObject = AssetTools.CreateAsset(
+            AssetName,
+            PackagePath,
+            UMaterialInstanceConstant::StaticClass(),
+            Factory,
+            FName(TEXT("ToonShaderGenerator"))
+        );
+
+        CreatedInstance =
+            Cast<UMaterialInstanceConstant>(CreatedObject);
+
+        if (!IsValid(CreatedInstance))
+        {
+            OutErrorMessage =
+                TEXT("Material Instanceの新規生成に失敗しました。");
+
+            return nullptr;
+        }
+
+        CreatedInstance->Modify();
+    }
 
     // ==========================================
     // 12. Material Parameter設定

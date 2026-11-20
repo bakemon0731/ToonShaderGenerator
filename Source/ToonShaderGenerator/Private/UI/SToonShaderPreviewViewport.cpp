@@ -8,6 +8,7 @@
 #include "Materials/MaterialInterface.h"
 #include "Engine/SkinnedAssetCommon.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/Texture.h"
 
 
 // ==================================================
@@ -238,5 +239,132 @@ bool SToonShaderPreviewViewport::RestorePreviewMaterialForSlot(int32 SlotIndex)
 		ViewportClient->Invalidate(false, false);
 	}
 	Invalidate();
+	return true;
+}
+
+// ==================================================
+// プレビューMaterialのパラメータ更新
+// ==================================================
+bool SToonShaderPreviewViewport::UpdatePreviewMaterialParameters(int32 SlotIndex, FName BaseColorParameterName,
+	const FLinearColor& BaseColor, FName ShadowColorParameterName, const FLinearColor& ShadowColor,
+	FName ShadowThresholdParameterName, float ShadowThreshold)
+{
+	// Preview Meshの確認
+	if (!IsValid(PreviewMeshComponent))
+	{
+		return false;
+	}
+	
+	if (SlotIndex <0 || SlotIndex >= PreviewMeshComponent->GetNumMaterials())
+	{
+		return false;
+	}
+	
+	// Preview MIDを取得
+	UMaterialInstanceDynamic* PreviewMID = Cast<UMaterialInstanceDynamic>(PreviewMeshComponent->GetMaterial(SlotIndex));
+	
+	if (!IsValid(PreviewMID))
+	{
+		return false;
+	}
+	
+	// Base Color
+	if (!BaseColorParameterName.IsNone())
+	{
+		PreviewMID->SetVectorParameterValue(
+			BaseColorParameterName,
+			BaseColor
+		);	
+	}
+	
+	// Shadow Color
+	if (!ShadowColorParameterName.IsNone())
+	{
+		PreviewMID->SetVectorParameterValue(
+			ShadowColorParameterName,
+			ShadowColor
+		);	
+	}
+	
+	// Shadow Threshold
+	if (!ShadowThresholdParameterName.IsNone())
+	{
+		PreviewMID->SetScalarParameterValue(
+			ShadowThresholdParameterName,
+			FMath::Clamp(ShadowThreshold, 0.0f, 1.0f)
+		);	
+	}
+	
+	// Viewport更新
+	const TSharedPtr<FEditorViewportClient> ViewportClient = GetViewportClient();
+	
+	if (ViewportClient.IsValid())
+	{
+		ViewportClient->Invalidate(false, false);
+	}
+	Invalidate();
+	return true;
+}
+
+// ==================================================
+// プレビューTextureの更新
+// ==================================================
+bool SToonShaderPreviewViewport::SetPreviewTextureParameter(int32 SlotIndex,FName ParameterName,UTexture* Texture)
+{
+	// Preview Mesh確認
+	if (!IsValid(PreviewMeshComponent))
+	{
+		return false;
+	}
+
+	// Parameter名確認
+	if (ParameterName.IsNone())
+	{
+		return false;
+	}
+
+	// Slot範囲確認
+	if (SlotIndex < 0 || SlotIndex >= PreviewMeshComponent->GetNumMaterials())
+	{
+		return false;
+	}
+
+	// ==========================================
+	// Preview MID取得
+	// ==========================================
+
+	UMaterialInstanceDynamic* PreviewMID =
+		Cast<UMaterialInstanceDynamic>(
+			PreviewMeshComponent->GetMaterial(SlotIndex)
+		);
+
+	if (!IsValid(PreviewMID))
+	{
+		return false;
+	}
+
+	// ==========================================
+	// Texture Parameter変更
+	// ==========================================
+
+	PreviewMID->SetTextureParameterValue(
+		ParameterName,
+		Texture
+	);
+
+	// ==========================================
+	// 再描画
+	// ==========================================
+
+	const TSharedPtr<FEditorViewportClient> ViewportClient =
+		GetViewportClient();
+
+	if (ViewportClient.IsValid())
+	{
+		ViewportClient->Invalidate(false, false);
+	}
+
+	Invalidate();
+
 	return true;
 }

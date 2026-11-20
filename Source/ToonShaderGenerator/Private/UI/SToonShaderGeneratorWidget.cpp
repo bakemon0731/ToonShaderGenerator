@@ -65,6 +65,162 @@ namespace
             return FText::FromString(TEXT("Other"));
         }
     }
+    
+    // ==================================================
+    // Texture Parameterの存在確認
+    // ==================================================
+    bool HasTextureParameter(UMaterialInterface* Material,FName ParameterName)
+    {
+        if (!IsValid(Material) || ParameterName.IsNone())
+        {
+            return false;
+        }
+
+        TMap<
+            FMaterialParameterInfo,
+            FMaterialParameterMetadata
+        > Parameters;
+
+        Material->GetAllParametersOfType(
+            EMaterialParameterType::Texture,
+            Parameters
+        );
+
+        for (const auto& Pair : Parameters)
+        {
+            if (Pair.Key.Name == ParameterName)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+    
+    FName GetBaseColorTextureParameterName(
+        EToonMaterialType MaterialType,
+        EToonTextureInputType InputType)
+    {
+        TArray<FName> CandidateNames;
+
+        // ==========================================
+        // Material Typeごとの候補名
+        // ==========================================
+
+        switch (MaterialType)
+        {
+        case EToonMaterialType::Face:
+
+            if (InputType != EToonTextureInputType::FaceBaseColor)
+            {
+                return NAME_None;
+            }
+
+            CandidateNames.Add(
+                FName(TEXT("FaceBaseColorTexture"))
+            );
+
+            break;
+
+
+        case EToonMaterialType::Hair:
+
+            if (InputType != EToonTextureInputType::HairBaseColor)
+            {
+                return NAME_None;
+            }
+
+            // Creatorと同じ優先順位
+            CandidateNames.Add(
+                FName(TEXT("HairBaseColorTexture"))
+            );
+
+            CandidateNames.Add(
+                FName(TEXT("HairBaseColor"))
+            );
+
+            break;
+
+
+        case EToonMaterialType::Skin:
+
+            if (InputType != EToonTextureInputType::SkinBaseColor)
+            {
+                return NAME_None;
+            }
+
+            CandidateNames.Add(
+                FName(TEXT("SkinBaseColorTexture"))
+            );
+
+            break;
+
+
+        case EToonMaterialType::Clothing:
+
+            if (InputType != EToonTextureInputType::ClothingBaseColor)
+            {
+                return NAME_None;
+            }
+
+            CandidateNames.Add(
+                FName(TEXT("ClothingBaseColorTexture"))
+            );
+
+            break;
+
+
+        default:
+
+            return NAME_None;
+        }
+
+
+        // ==========================================
+        // Master Materialを取得
+        // ==========================================
+
+        FSoftObjectPath MasterMaterialPath;
+
+        FString MasterMaterialName;
+        FString ErrorMessage;
+
+        if (!FToonMasterMaterialRegistry::Resolve(
+            MaterialType,
+            MasterMaterialPath,
+            MasterMaterialName,
+            ErrorMessage))
+        {
+            return NAME_None;
+        }
+
+        UMaterialInterface* MasterMaterial =
+            Cast<UMaterialInterface>(
+                MasterMaterialPath.TryLoad()
+            );
+
+        if (!IsValid(MasterMaterial))
+        {
+            return NAME_None;
+        }
+
+
+        // ==========================================
+        // 実際に存在するParameterを検索
+        // ==========================================
+
+        for (const FName& CandidateName : CandidateNames)
+        {
+            if (HasTextureParameter(
+                MasterMaterial,
+                CandidateName))
+            {
+                return CandidateName;
+            }
+        }
+
+        return NAME_None;
+    }
 }
 
 
@@ -1195,14 +1351,48 @@ void SToonShaderGeneratorWidget::HandleTextureChanged(const FAssetData& AssetDat
     default:
         return;
     }
+    
+    // ==========================================
+    // Base Color Textureをプレビューへ反映
+    // ==========================================
 
-    StatusText->SetText(
-        FText::FromString(
-            AssetData.IsValid()
-            ? TEXT("状態：テクスチャを設定しました。")
-            : TEXT("状態：テクスチャを解除しました。")
-        )
-    );
+    const bool bIsBaseColorTexture =
+    InputType == EToonTextureInputType::FaceBaseColor ||
+    InputType == EToonTextureInputType::HairBaseColor ||
+    InputType == EToonTextureInputType::SkinBaseColor ||
+    InputType == EToonTextureInputType::ClothingBaseColor;
+
+    bool bPreviewUpdated = false;
+
+    if (bIsBaseColorTexture)
+    {
+        bPreviewUpdated =
+            RefreshPreviewBaseColorTexture(
+                SlotIndex,
+                true
+            );
+    }
+
+    if (bIsBaseColorTexture)
+    {
+        StatusText->SetText(
+            FText::FromString(
+                bPreviewUpdated
+                    ? TEXT("Base Color Textureをプレビューに反映しました。")
+                    : TEXT("Textureを保存しました。Material Instance生成後にプレビューへ反映します。")
+            )
+        );
+    }
+    else
+    {
+        StatusText->SetText(
+            FText::FromString(
+                AssetData.IsValid()
+                    ? TEXT("状態：テクスチャを設定しました。")
+                    : TEXT("状態：テクスチャを解除しました。")
+            )
+        );
+    }
     
     // テクスチャを変更したため検証結果を無効化
     ValidationResultBox->ClearChildren();
@@ -1568,14 +1758,58 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
     // アセット名を決定
     // ==========================================
 
-    const FString AssetName = FString::Printf(
-        TEXT("MI_Toon_%s_Slot_%02d"),
-        *SkeletalMesh->GetName(),
-        SlotIndex
-    );
+    FString AssetName = FString::Printf(
+    TEXT("MI_Toon_%s_Slot_%02d"),
+    *SkeletalMesh->GetName(),
+    SlotIndex
+);
+
+    const FString BaseAssetName = AssetName;
 
     const FString PackagePath =
         TEXT("/Game/ToonGenerated/Materials");
+
+
+    // ==========================================
+    // 前回生成したMIがあれば同じアセットを再利用
+    // ==========================================
+
+    if (!SlotInfo.GeneratedMaterialInstancePath.IsNull())
+    {
+        UMaterialInstanceConstant* PreviousInstance =
+            Cast<UMaterialInstanceConstant>(
+                SlotInfo.GeneratedMaterialInstancePath.TryLoad()
+            );
+
+        if (IsValid(PreviousInstance))
+        {
+            const FString PreviousName =
+                PreviousInstance->GetName();
+
+            const FString ExpectedPackageName =
+                FString::Printf(
+                    TEXT("%s/%s"),
+                    *PackagePath,
+                    *PreviousName
+                );
+
+            const bool bIsExpectedName =
+                PreviousName == BaseAssetName ||
+                PreviousName.StartsWith(
+                    BaseAssetName + TEXT("_")
+                );
+
+            const bool bIsExpectedFolder =
+                PreviousInstance->GetOutermost()->GetName()
+                == ExpectedPackageName;
+
+            if (bIsExpectedName && bIsExpectedFolder)
+            {
+                // 前回生成したMIを上書き対象にする
+                AssetName = PreviousName;
+            }
+        }
+    }
 
 
     // ==========================================
@@ -1584,12 +1818,15 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
 
     FString ErrorMessage;
 
+    bool bWasUpdated = false;
+
     UMaterialInstanceConstant* CreatedInstance =
         FToonMaterialInstanceCreator::Create(
             MasterMaterial,
             AssetName,
             PackagePath,
             Settings,
+            bWasUpdated,
             ErrorMessage
         );
 
@@ -1626,22 +1863,42 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
             CreatedInstance
         );    
     }
+    
+    // ==========================================
+    // 保存済みTextureを再適用
+    // ==========================================
+    if (bPreviewUpdated)
+    {
+        RefreshPreviewBaseColorTexture(
+            SlotIndex,
+            false
+        );
+
+        // STEP 5のカラー設定も再適用
+        RefreshPreviewBasicMaterialSettings();
+    }
 
     // ==========================================
     // 結果表示
     // ==========================================
     
-    const FString PreviewMessage = 
+    const FString OperationMessage =
+    bWasUpdated
+    ? TEXT("上書き更新成功")
+    : TEXT("新規生成成功");
+
+    const FString PreviewMessage =
         bPreviewUpdated
         ? TEXT("プレビューに反映しました。")
         : TEXT("プレビューへの反映に失敗しました。");
 
     const FString SuccessMessage = FString::Printf(
         TEXT(
-            "生成成功：%s\n"
+            "%s：%s\n"
             "Master Material：%s\n"
             "%s"
         ),
+        *OperationMessage,
         *CreatedInstance->GetName(),
         *MasterMaterialName,
         *PreviewMessage
@@ -1650,7 +1907,6 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
     StatusText->SetText(
         FText::FromString(SuccessMessage)
     );
-
     return FReply::Handled();
 }
 
@@ -1667,7 +1923,10 @@ FReply SToonShaderGeneratorWidget::HandleOpenColorPicker(bool bEditBaseColor)
         FOnLinearColorValueChanged::CreateLambda(
             [this, bEditBaseColor](FLinearColor NewColor)
             {
-                // 選択された色を保存
+                // ======================================
+                // 設定値を保存
+                // ======================================
+
                 if (bEditBaseColor)
                 {
                     BasicMaterialSettings.BaseColor = NewColor;
@@ -1676,6 +1935,16 @@ FReply SToonShaderGeneratorWidget::HandleOpenColorPicker(bool bEditBaseColor)
                 {
                     BasicMaterialSettings.ShadowColor = NewColor;
                 }
+
+                // ======================================
+                // プレビューを更新
+                // ======================================
+
+                RefreshPreviewBasicMaterialSettings();
+
+                // ======================================
+                // ステータス更新
+                // ======================================
 
                 StatusText->SetText(
                     FText::FromString(
@@ -1801,6 +2070,17 @@ FReply SToonShaderGeneratorWidget::HandleApplyMaterialInstanceClicked(int32 Slot
             SlotIndex,
             MaterialInstance
         );    
+    }
+    
+    // Preview Materialを設定した後
+    if (PreviewViewport.IsValid())
+    {
+        RefreshPreviewBaseColorTexture(
+            SlotIndex,
+            false
+        );
+
+        RefreshPreviewBasicMaterialSettings();
     }
     
     if (!bSuccess)
@@ -2143,6 +2423,9 @@ void SToonShaderGeneratorWidget::HandleShadowThresholdChanged(float NewValue)
 {
     // 0.0 ～ 1.0の範囲に制限
     BasicMaterialSettings.ShadowThreshold = FMath::Clamp(NewValue, 0.0f, 1.0f);
+
+    // プレビューを更新
+    RefreshPreviewBasicMaterialSettings();
 }
 
 TSharedRef<SWidget> SToonShaderGeneratorWidget::CreateHairSettingsWidget()
@@ -2411,4 +2694,217 @@ FReply SToonShaderGeneratorWidget::HandleResetPreviewCameraClicked()
         PreviewViewport->ResetCamera();
     }
     return FReply::Handled();
+}
+
+// ==================================================
+// プレビュー基本設定の更新
+// ==================================================
+void SToonShaderGeneratorWidget::RefreshPreviewBasicMaterialSettings()
+{
+    if (!PreviewViewport.IsValid())
+    {
+        return;
+    }
+
+    // 現在のMaterial Slotをすべて確認
+    for (const FToonMaterialSlotInfo& SlotInfo : CurrentSlotInfos)
+    {
+        FName BaseColorParameter = NAME_None;
+        FName ShadowColorParameter = NAME_None;
+        FName ShadowThresholdParameter = NAME_None;
+
+        // ==========================================
+        // Material Typeごとのパラメータ名
+        // ==========================================
+
+        switch (SlotInfo.MaterialType)
+        {
+        case EToonMaterialType::Other:
+
+            BaseColorParameter = FName(TEXT("BaseColor"));
+            ShadowColorParameter = FName(TEXT("ShadowColor"));
+            ShadowThresholdParameter = FName(TEXT("ShadowThreshold"));
+
+            break;
+
+        case EToonMaterialType::Face:
+
+            BaseColorParameter = FName(TEXT("BaseColor"));
+            ShadowColorParameter = FName(TEXT("ShadowColor"));
+
+            // FaceではCreatorがShadowThresholdを設定していない
+            break;
+
+        case EToonMaterialType::Hair:
+
+            BaseColorParameter = FName(TEXT("HairBaseColor"));
+            ShadowColorParameter = FName(TEXT("HairShadowColor"));
+            ShadowThresholdParameter = FName(TEXT("HairShadowThreshold"));
+
+            break;
+
+        case EToonMaterialType::Skin:
+
+            BaseColorParameter = FName(TEXT("SkinTint"));
+            ShadowColorParameter = FName(TEXT("SkinShadowColor"));
+            ShadowThresholdParameter = FName(TEXT("SkinShadowThreshold"));
+
+            break;
+
+        case EToonMaterialType::Clothing:
+
+            BaseColorParameter = FName(TEXT("ClothingTint"));
+            ShadowColorParameter = FName(TEXT("ClothingShadowColor"));
+            ShadowThresholdParameter = FName(TEXT("ClothingShadowThreshold"));
+
+            break;
+
+        default:
+            continue;
+        }
+
+        // ==========================================
+        // Preview MIDを更新
+        // ==========================================
+
+        PreviewViewport->UpdatePreviewMaterialParameters(
+            SlotInfo.SlotIndex,
+
+            BaseColorParameter,
+            BasicMaterialSettings.BaseColor,
+
+            ShadowColorParameter,
+            BasicMaterialSettings.ShadowColor,
+
+            ShadowThresholdParameter,
+            BasicMaterialSettings.ShadowThreshold
+        );
+    }
+}
+
+// ==================================================
+// 保存済みBase Color Textureをプレビューに再適用
+// ==================================================
+
+bool SToonShaderGeneratorWidget::RefreshPreviewBaseColorTexture(
+    int32 SlotIndex,
+    bool bClearWhenEmpty)
+{
+    if (!PreviewViewport.IsValid())
+    {
+        return false;
+    }
+
+    if (!CurrentSlotInfos.IsValidIndex(SlotIndex))
+    {
+        return false;
+    }
+
+    const FToonMaterialSlotInfo& SlotInfo =
+        CurrentSlotInfos[SlotIndex];
+
+    FSoftObjectPath TexturePath;
+    EToonTextureInputType InputType;
+
+    // ==========================================
+    // Material Typeから保存先を取得
+    // ==========================================
+
+    switch (SlotInfo.MaterialType)
+    {
+    case EToonMaterialType::Face:
+
+        TexturePath = SlotInfo.FaceBaseColorTexturePath;
+        InputType = EToonTextureInputType::FaceBaseColor;
+        break;
+
+
+    case EToonMaterialType::Hair:
+
+        TexturePath = SlotInfo.HairBaseColorTexturePath;
+        InputType = EToonTextureInputType::HairBaseColor;
+        break;
+
+
+    case EToonMaterialType::Skin:
+
+        TexturePath = SlotInfo.SkinBaseColorTexturePath;
+        InputType = EToonTextureInputType::SkinBaseColor;
+        break;
+
+
+    case EToonMaterialType::Clothing:
+
+        TexturePath = SlotInfo.ClothingBaseColorTexturePath;
+        InputType = EToonTextureInputType::ClothingBaseColor;
+        break;
+
+
+    default:
+
+        return false;
+    }
+
+    // ==========================================
+    // Parameter名を取得
+    // ==========================================
+
+    const FName ParameterName =
+        GetBaseColorTextureParameterName(
+            SlotInfo.MaterialType,
+            InputType
+        );
+
+    if (ParameterName.IsNone())
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT(
+                "[ToonShaderGenerator] Base Color Texture Parameterが見つかりません。MaterialType=%d"
+            ),
+            static_cast<int32>(SlotInfo.MaterialType)
+        );
+
+        return false;
+    }
+
+    // ==========================================
+    // Textureをロード
+    // ==========================================
+
+    UTexture2D* Texture = nullptr;
+
+    if (!TexturePath.IsNull())
+    {
+        Texture = Cast<UTexture2D>(
+            TexturePath.TryLoad()
+        );
+
+        if (!IsValid(Texture))
+        {
+            UE_LOG(
+                LogTemp,
+                Warning,
+                TEXT("[ToonShaderGenerator] Textureのロードに失敗しました。")
+            );
+
+            return false;
+        }
+    }
+    else if (!bClearWhenEmpty)
+    {
+        // 未指定ならMaster Materialの既定値を維持
+        return true;
+    }
+
+    // ==========================================
+    // Preview MIDへ適用
+    // ==========================================
+
+    return PreviewViewport->SetPreviewTextureParameter(
+        SlotInfo.SlotIndex,
+        ParameterName,
+        Texture
+    );
 }

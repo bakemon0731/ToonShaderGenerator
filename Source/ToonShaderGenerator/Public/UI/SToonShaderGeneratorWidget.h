@@ -80,9 +80,7 @@ private:
 	
 	// Master Materialの表示
 	TSharedPtr<STextBlock> MasterMaterialText;
-
-private:
-
+	
 	// 選択中のSkeletal Mesh
 	FSoftObjectPath SelectedSkeletalMeshPath;
 
@@ -99,8 +97,6 @@ private:
 
 	TSharedPtr<SVerticalBox> MaterialSlotListBox;
 	
-private:
-	
 	TSharedRef<SWidget> CreateTextureInputWidget(int32 SlotIndex,EToonTextureInputType InputType,const FText& Label);
 
 	// 選択中のテクスチャパスを取得
@@ -111,13 +107,9 @@ private:
 
 	// 用途に応じて入力欄を更新
 	void RefreshMaterialInputWidgets(int32 SlotIndex);
-	
-private:
 
 	// Material Instance生成ボタン
 	FReply HandleGenerateMaterialInstanceClicked(int32 SlotIndex);
-	
-private:
 	
 	// カラーピッカーを開く
 	FReply HandleOpenColorPicker(bool bEditBaseColor);
@@ -125,15 +117,11 @@ private:
 	// Shadow Threshold変更
 	void HandleShadowThresholdChanged(float NewValue);
 	
-private:
-	
 	// 生成したMaterial Instanceを適用
 	FReply HandleApplyMaterialInstanceClicked(int32 SlotIndex);
 	
 	// 元のMaterialに戻す
 	FReply HandleRestoreOriginalMaterialClicked(int32 SlotIndex);
-	
-private:
 	
 	// テクスチャ検証ボタン
 	FReply HandleValidateTexturesClicked();
@@ -141,17 +129,18 @@ private:
 	// 検証結果をUIに表示
 	void DisplayValidationResults(const TArray<FToonValidationIssue>& Issues);
 	
-private:
-	
 	// Hairシェーダー設定の入力欄を作成
 	TSharedRef<SWidget> CreateHairSettingsWidget();
-
 	
-private:
 	// Face Mesh Analysis
 	FReply HandleAnalyzeFaceSlotsClicked();
 	
-private:
 	// プレビューカメラのリセット
 	FReply HandleResetPreviewCameraClicked();
+	
+	// プレビューの基本シェーダー設定を更新
+	void RefreshPreviewBasicMaterialSettings();
+	
+	// 保存済みBase Color Textureをプレビューに再適用
+	bool RefreshPreviewBaseColorTexture(int32 SlotIndex,bool bClearWhenEmpty);
 };

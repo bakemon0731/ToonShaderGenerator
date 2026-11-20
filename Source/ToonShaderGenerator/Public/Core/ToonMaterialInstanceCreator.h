@@ -15,6 +15,7 @@ public:
 		const FString& AssetName,
 		const FString& PackagePath,
 		const FToonMaterialInstanceSettings& Settings,
+		bool& bOutWasUpdated,
 		FString& OutErrorMessage
 	);
 };
