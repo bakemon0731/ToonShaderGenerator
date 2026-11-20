@@ -1615,18 +1615,36 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
     SlotInfo.GeneratedMaterialInstancePath =
         FSoftObjectPath(CreatedInstance->GetPathName());
 
+    // ==========================================
+    // 生成したMaterialをプレビューに反映
+    // ==========================================
+    bool bPreviewUpdated = false;
+    if (PreviewViewport.IsValid())
+    {
+        bPreviewUpdated = PreviewViewport->SetPreviewMaterialForSlot(
+            SlotIndex,
+            CreatedInstance
+        );    
+    }
 
     // ==========================================
     // 結果表示
     // ==========================================
+    
+    const FString PreviewMessage = 
+        bPreviewUpdated
+        ? TEXT("プレビューに反映しました。")
+        : TEXT("プレビューへの反映に失敗しました。");
 
     const FString SuccessMessage = FString::Printf(
         TEXT(
             "生成成功：%s\n"
-            "Master Material：%s"
+            "Master Material：%s\n"
+            "%s"
         ),
         *CreatedInstance->GetName(),
-        *MasterMaterialName
+        *MasterMaterialName,
+        *PreviewMessage
     );
 
     StatusText->SetText(
@@ -1776,6 +1794,15 @@ FReply SToonShaderGeneratorWidget::HandleApplyMaterialInstanceClicked(int32 Slot
             ErrorMessage
         );
     
+    // プレビューにも適用結果を反映
+    if (PreviewViewport.IsValid())
+    {
+        PreviewViewport->SetPreviewMaterialForSlot(
+            SlotIndex,
+            MaterialInstance
+        );    
+    }
+    
     if (!bSuccess)
     {
         StatusText->SetText(
@@ -1922,6 +1949,12 @@ FReply SToonShaderGeneratorWidget::HandleRestoreOriginalMaterialClicked(int32 Sl
             OriginalMaterial,
             ErrorMessage
         );
+    
+    // プレビューも元のMaterialに戻す
+    if (PreviewViewport.IsValid())
+    {
+        PreviewViewport->RestorePreviewMaterialForSlot(SlotIndex);
+    }
     
     if (!bSuccess)
     {

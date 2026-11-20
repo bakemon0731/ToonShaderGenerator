@@ -7,6 +7,7 @@
 class FAdvancedPreviewScene;
 class USkeletalMesh;
 class USkeletalMeshComponent;
+class UMaterialInterface;
 
 class SToonShaderPreviewViewport : public SEditorViewport
 {
@@ -24,6 +25,12 @@ public:
 	
 	// カメラを初期視点に戻す
 	void ResetCamera();
+	
+	// プレビュー専用Materialを設定
+	bool SetPreviewMaterialForSlot(int32 SlotIndex, UMaterialInterface* SourceMaterial);
+	
+	// プレビューのMaterialを元の状態に戻す
+	bool RestorePreviewMaterialForSlot(int32 SlotIndex);
 
 protected:
 

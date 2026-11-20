@@ -4,6 +4,10 @@
 #include "EditorViewportClient.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
+#include "Engine/SkinnedAssetCommon.h"
+#include "Engine/SkeletalMesh.h"
 
 
 // ==================================================
@@ -146,4 +150,93 @@ void SToonShaderPreviewViewport::ResetCamera()
 	// 再描画
 	ViewportClient->Invalidate(false, false);
 	Invalidate();
+}
+
+// ==================================================
+// プレビュー専用Materialを設定
+// ==================================================
+bool SToonShaderPreviewViewport::SetPreviewMaterialForSlot(int32 SlotIndex, UMaterialInterface* SourceMaterial)
+{
+	// Preview Meshの確認
+	if (!IsValid(PreviewMeshComponent))
+	{
+		return false;
+	}
+	
+	// Materialの確認
+	if (!IsValid(SourceMaterial))
+	{
+		return false;
+	}
+	
+	// Slotの範囲確認
+	if (SlotIndex < 0 || SlotIndex >= PreviewMeshComponent->GetNumMaterials())
+	{
+		return false;
+	}
+	
+	// Preview専用MIDを生成してSlotに設定
+	UMaterialInstanceDynamic* PreviewMID = PreviewMeshComponent->CreateDynamicMaterialInstance(
+		SlotIndex,
+		SourceMaterial,
+		NAME_None
+	);
+	
+	if (!IsValid(PreviewMID))
+	{
+		return false;
+	}
+	
+	// Viewportの更新
+	const TSharedPtr<FEditorViewportClient> ViewportClient = GetViewportClient();
+	
+	if (ViewportClient.IsValid())
+	{
+		ViewportClient->Invalidate(false, false);
+	}
+	
+	Invalidate();
+	
+	return true;
+}
+
+// ==================================================
+// プレビューのMaterialを元の状態に戻す
+// ==================================================
+bool SToonShaderPreviewViewport::RestorePreviewMaterialForSlot(int32 SlotIndex)
+{
+	if (!IsValid(PreviewMeshComponent))
+	{
+		return false;
+	}
+	
+	USkeletalMesh* SourceMesh = PreviewMeshComponent->GetSkeletalMeshAsset();
+	
+	if (!IsValid(SourceMesh))
+	{
+		return false;
+	}
+	
+	const TArray<FSkeletalMaterial>& Materials = SourceMesh->GetMaterials();
+	
+	if (!Materials.IsValidIndex(SlotIndex))
+	{
+		return false;
+	}
+	
+	// 元のSkeletal Meshが持つMaterialを取得
+	UMaterialInterface* OriginalMaterial = Materials[SlotIndex].MaterialInterface.Get();
+	
+	// Preview Componentだけ元に戻す
+	PreviewMeshComponent->SetMaterial(SlotIndex, OriginalMaterial);
+	
+	// 再描画
+	const TSharedPtr<FEditorViewportClient> ViewportClient = GetViewportClient();
+	
+	if (ViewportClient.IsValid())
+	{
+		ViewportClient->Invalidate(false, false);
+	}
+	Invalidate();
+	return true;
 }
