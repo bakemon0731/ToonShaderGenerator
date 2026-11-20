@@ -12,6 +12,7 @@
 struct FAssetData;
 
 class STextBlock;
+class USkeletalMesh;
 class SVerticalBox;
 class SToonShaderPreviewViewport;
 class SToonBasicMaterialSettings;
@@ -56,8 +57,12 @@ private:
 	// 選択されたMeshのパス取得
 	FString GetSelectedSkeletalMeshPath() const;
 
-	// Mesh情報取得
+	// Mesh情報取得(「再取得」ボタン)
 	FReply HandleInspectMeshClicked();
+
+	// 指定MeshのMaterial Slot情報を取得してUIに表示する
+	// メッシュ選択時に自動で呼ばれる
+	bool RefreshMaterialSlotsFromMesh(USkeletalMesh* SkeletalMesh);
 
 	// Material Slot一覧更新
 	void UpdateMaterialSlotList(
@@ -117,8 +122,18 @@ private:
 	// Shadow Threshold変更
 	void HandleShadowThresholdChanged(float NewValue);
 	
-	// 生成したMaterial Instanceを適用
-	FReply HandleApplyMaterialInstanceClicked(int32 SlotIndex);
+	// 生成したMaterial Instanceを適用した結果
+	enum class EApplyResult : uint8
+	{
+		Applied,        // 新規に適用した
+		AlreadyApplied, // 既に適用済み(MIの内容のみ更新された)
+		Cancelled,      // 確認ダイアログでキャンセルされた
+		Failed          // 失敗した
+	};
+
+	// 生成したMaterial Instanceを、選択中のSkeletal Meshのスロットへ適用する
+	// MI生成後に自動で呼ばれる
+	EApplyResult ApplyGeneratedMaterialInstanceToSlot(int32 SlotIndex, FString& OutMessage);
 	
 	// 元のMaterialに戻す
 	FReply HandleRestoreOriginalMaterialClicked(int32 SlotIndex);
@@ -143,4 +158,9 @@ private:
 	
 	// 保存済みBase Color Textureをプレビューに再適用
 	bool RefreshPreviewBaseColorTexture(int32 SlotIndex,bool bClearWhenEmpty);
+
+	// MI生成前でもBase Colorをプレビューへ反映できるように、
+	// 用途に対応するMaster Material由来のプレビュー用MIDを用意する
+	// bForceRebuild=trueの場合は既存のMIDがあっても作り直す(Master既定値に戻る)
+	bool EnsurePreviewToonMaterialForSlot(int32 SlotIndex, bool bForceRebuild);
 };

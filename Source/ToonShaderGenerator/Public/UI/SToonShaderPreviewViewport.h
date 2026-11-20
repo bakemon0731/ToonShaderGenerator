@@ -8,6 +8,7 @@ class FAdvancedPreviewScene;
 class USkeletalMesh;
 class USkeletalMeshComponent;
 class UMaterialInterface;
+class UMaterialInstanceDynamic;
 class UTexture;
 
 
@@ -33,6 +34,10 @@ public:
 	
 	// プレビューのMaterialを元の状態に戻す
 	bool RestorePreviewMaterialForSlot(int32 SlotIndex);
+	
+	// 指定Slotのプレビュー用MIDを取得する
+	// Toon Material化されていない(元のMaterialのまま)場合はnullptr
+	UMaterialInstanceDynamic* GetPreviewMaterialInstanceDynamic(int32 SlotIndex) const;
 	
 	// プレビューMaterialのパラメータを更新
 	bool UpdatePreviewMaterialParameters(

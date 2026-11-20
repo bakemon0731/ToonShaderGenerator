@@ -10,10 +10,12 @@
 
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceConstant.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 
 #include "AssetRegistry/AssetData.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/SkinnedAssetCommon.h"
 #include "Engine/Texture2D.h"
 #include "PropertyCustomizationHelpers.h"
 #include "Templates/SharedPointer.h"
@@ -66,6 +68,30 @@ namespace
         }
     }
     
+    // ==================================================
+    // 現在の用途に対応するBase Color Textureのパスを取得
+    // ==================================================
+    FSoftObjectPath GetBaseColorTexturePathForType(const FToonMaterialSlotInfo& SlotInfo)
+    {
+        switch (SlotInfo.MaterialType)
+        {
+        case EToonMaterialType::Face:
+            return SlotInfo.FaceBaseColorTexturePath;
+
+        case EToonMaterialType::Hair:
+            return SlotInfo.HairBaseColorTexturePath;
+
+        case EToonMaterialType::Skin:
+            return SlotInfo.SkinBaseColorTexturePath;
+
+        case EToonMaterialType::Clothing:
+            return SlotInfo.ClothingBaseColorTexturePath;
+
+        default:
+            return FSoftObjectPath();
+        }
+    }
+
     // ==================================================
     // Texture Parameterの存在確認
     // ==================================================
@@ -597,7 +623,7 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
             .Padding(0.0f, 0.0f, 0.0f, 12.0f)
             [
                 SNew(SButton)
-                .Text(FText::FromString(TEXT("Material Slot情報を取得")))
+                .Text(FText::FromString(TEXT("Material Slot情報を再取得")))
                 .OnClicked(
                     this,
                     &SToonShaderGeneratorWidget::HandleInspectMeshClicked
@@ -780,6 +806,14 @@ void SToonShaderGeneratorWidget::HandleSkeletalMeshChanged(
     StatusText->SetText(
         FText::FromString(TEXT("状態：対象メッシュが変更されました。"))
     );
+
+    // ==========================================
+    // メッシュが選択されたらMaterial Slotを自動で取得して表示
+    // ==========================================
+    if (IsValid(MeshToPreview))
+    {
+        RefreshMaterialSlotsFromMesh(MeshToPreview);
+    }
 }
 
 
@@ -821,6 +855,29 @@ FReply SToonShaderGeneratorWidget::HandleInspectMeshClicked()
         return FReply::Handled();
     }
 
+    RefreshMaterialSlotsFromMesh(SkeletalMesh);
+
+    return FReply::Handled();
+}
+
+
+// ==================================================
+// Material Slot情報の取得とUI表示
+// (メッシュ選択時の自動取得と「再取得」ボタンの両方から呼ばれる)
+// ==================================================
+
+bool SToonShaderGeneratorWidget::RefreshMaterialSlotsFromMesh(
+    USkeletalMesh* SkeletalMesh)
+{
+    if (!IsValid(SkeletalMesh))
+    {
+        StatusText->SetText(
+            FText::FromString(TEXT("エラー：Skeletal Meshをロードできませんでした。"))
+        );
+
+        return false;
+    }
+
     TArray<FToonMaterialSlotInfo> SlotInfos;
     FString ErrorMessage;
 
@@ -839,41 +896,41 @@ FReply SToonShaderGeneratorWidget::HandleInspectMeshClicked()
             )
         );
 
-        return FReply::Handled();
+        return false;
     }
 
-    // 同じMeshを再検証した場合は、既存のバックアップと
+    // 同じMeshを再取得した場合は、既存のバックアップと
     // 生成済みMIの参照を引き継ぐ
+    // (メッシュ変更時はCurrentSlotInfosが空なので何も引き継がれない)
     for (FToonMaterialSlotInfo& NewInfo : SlotInfos)
     {
         if (!CurrentSlotInfos.IsValidIndex(NewInfo.SlotIndex))
         {
             continue;
         }
-        
+
         const FToonMaterialSlotInfo& PreviousInfo = CurrentSlotInfos[NewInfo.SlotIndex];
-        
+
         if (PreviousInfo.bHasOriginalMaterialBackup)
         {
             NewInfo.OriginalMaterialPath = PreviousInfo.OriginalMaterialPath;
-            
+
             NewInfo.bHasOriginalMaterialBackup = true;
         }
-        
+
         if (!PreviousInfo.GeneratedMaterialInstancePath.IsNull())
         {
             NewInfo.GeneratedMaterialInstancePath = PreviousInfo.GeneratedMaterialInstancePath;
         }
     }
-    
-    
+
     UpdateMaterialSlotList(SlotInfos);
 
     StatusText->SetText(
         FText::FromString(TEXT("状態：Material Slot情報を取得しました。"))
     );
 
-    return FReply::Handled();
+    return true;
 }
 
 
@@ -1034,36 +1091,13 @@ void SToonShaderGeneratorWidget::UpdateMaterialSlotList(
                     SNew(SButton)
                     .Text(
                         FText::FromString(
-                            TEXT("このSlotのMaterial Instanceを生成")
+                            TEXT("このSlotのMaterial Instanceを生成して適用")
                         )
                     )
                     .OnClicked_Lambda(
                         [this, SlotIndex]()
                         {
                             return HandleGenerateMaterialInstanceClicked(
-                                SlotIndex
-                            );    
-                        }
-                    )    
-                ]
-
-                // ==========================================
-                // 生成したMIを適用
-                // ==========================================
-                +SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0.0f, 6.0f, 0.0f, 0.0f)
-                [
-                    SNew(SButton)
-                    .Text(
-                        FText::FromString(
-                            TEXT("生成したMIをこのSlotに適用")
-                        )
-                    )
-                    .OnClicked_Lambda(
-                        [this, SlotIndex]()
-                        {
-                            return HandleApplyMaterialInstanceClicked(
                                 SlotIndex
                             );    
                         }
@@ -1130,6 +1164,29 @@ void SToonShaderGeneratorWidget::HandleMaterialTypeChanged(
     
     // 用途変更時にUIを更新
     RefreshMaterialInputWidgets(SlotIndex);
+
+    // ==========================================
+    // プレビューを新しい用途のMaster Materialに合わせる
+    // (既にToon化されている、またはBase Colorが設定済みの場合のみ)
+    // ==========================================
+    if (PreviewViewport.IsValid())
+    {
+        const FToonMaterialSlotInfo& ChangedSlotInfo = CurrentSlotInfos[SlotIndex];
+
+        const bool bHasToonPreview =
+            PreviewViewport->GetPreviewMaterialInstanceDynamic(SlotIndex) != nullptr;
+
+        const bool bHasBaseColorTexture =
+            !GetBaseColorTexturePathForType(ChangedSlotInfo).IsNull();
+
+        if (bHasToonPreview || bHasBaseColorTexture)
+        {
+            if (EnsurePreviewToonMaterialForSlot(SlotIndex, false))
+            {
+                RefreshPreviewBaseColorTexture(SlotIndex, false);
+            }
+        }
+    }
 
     const FText TypeName = GetMaterialTypeDisplayName(*SelectedType);
 
@@ -1366,22 +1423,51 @@ void SToonShaderGeneratorWidget::HandleTextureChanged(const FAssetData& AssetDat
 
     if (bIsBaseColorTexture)
     {
-        bPreviewUpdated =
-            RefreshPreviewBaseColorTexture(
-                SlotIndex,
-                true
-            );
+        if (!TexturePath.IsNull())
+        {
+            // MI生成前でもプレビューに反映できるよう、
+            // Master Material由来のプレビュー用MIDを用意してからTextureを設定する
+            EnsurePreviewToonMaterialForSlot(SlotIndex, false);
+
+            bPreviewUpdated =
+                RefreshPreviewBaseColorTexture(
+                    SlotIndex,
+                    false
+                );
+        }
+        else if (PreviewViewport.IsValid() &&
+            PreviewViewport->GetPreviewMaterialInstanceDynamic(SlotIndex) != nullptr)
+        {
+            // 解除時はプレビュー用MIDをMaster Materialの既定値で作り直す
+            bPreviewUpdated =
+                EnsurePreviewToonMaterialForSlot(SlotIndex, true);
+        }
+        else
+        {
+            // プレビューは元のMaterialのままなので、戻すものがない
+            bPreviewUpdated = true;
+        }
     }
 
     if (bIsBaseColorTexture)
     {
-        StatusText->SetText(
-            FText::FromString(
-                bPreviewUpdated
-                    ? TEXT("Base Color Textureをプレビューに反映しました。")
-                    : TEXT("Textureを保存しました。Material Instance生成後にプレビューへ反映します。")
-            )
-        );
+        FString BaseColorMessage;
+
+        if (!bPreviewUpdated)
+        {
+            BaseColorMessage =
+                TEXT("Textureを保存しました。プレビューへの反映に失敗しました（用途とMaster Materialを確認してください）。");
+        }
+        else if (TexturePath.IsNull())
+        {
+            BaseColorMessage = TEXT("状態：Base Color Textureを解除しました。");
+        }
+        else
+        {
+            BaseColorMessage = TEXT("Base Color Textureをプレビューに反映しました。");
+        }
+
+        StatusText->SetText(FText::FromString(BaseColorMessage));
     }
     else
     {
@@ -1853,6 +1939,18 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
         FSoftObjectPath(CreatedInstance->GetPathName());
 
     // ==========================================
+    // 生成したMIをSkeletal Meshのこのスロットへ自動適用
+    // ==========================================
+    // メッシュ側のPostEditChangeでプレビューが更新され得るため、
+    // プレビュー反映より先に適用する
+    FString ApplyMessage;
+
+    ApplyGeneratedMaterialInstanceToSlot(
+        SlotIndex,
+        ApplyMessage
+    );
+
+    // ==========================================
     // 生成したMaterialをプレビューに反映
     // ==========================================
     bool bPreviewUpdated = false;
@@ -1861,7 +1959,7 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
         bPreviewUpdated = PreviewViewport->SetPreviewMaterialForSlot(
             SlotIndex,
             CreatedInstance
-        );    
+        );
     }
     
     // ==========================================
@@ -1896,12 +1994,14 @@ FReply SToonShaderGeneratorWidget::HandleGenerateMaterialInstanceClicked(
         TEXT(
             "%s：%s\n"
             "Master Material：%s\n"
+            "%s\n"
             "%s"
         ),
         *OperationMessage,
         *CreatedInstance->GetName(),
         *MasterMaterialName,
-        *PreviewMessage
+        *PreviewMessage,
+        *ApplyMessage
     );
 
     StatusText->SetText(
@@ -1964,18 +2064,22 @@ FReply SToonShaderGeneratorWidget::HandleOpenColorPicker(bool bEditBaseColor)
     return FReply::Handled();    
 }
 
-FReply SToonShaderGeneratorWidget::HandleApplyMaterialInstanceClicked(int32 SlotIndex)
+// ==================================================
+// 生成したMaterial Instanceをスロットへ適用
+// (MI生成後に自動で呼ばれる)
+// ==================================================
+SToonShaderGeneratorWidget::EApplyResult
+SToonShaderGeneratorWidget::ApplyGeneratedMaterialInstanceToSlot(
+    int32 SlotIndex,
+    FString& OutMessage)
 {
+    OutMessage.Reset();
+
     // Slotの検証
     if (!CurrentSlotInfos.IsValidIndex(SlotIndex))
     {
-        StatusText->SetText(
-            FText::FromString(
-                TEXT("エラー：Material Slotが無効です。")
-            )
-        );
-        
-        return FReply::Handled();
+        OutMessage = TEXT("適用失敗：Material Slotが無効です。");
+        return EApplyResult::Failed;
     }
     
     FToonMaterialSlotInfo& SlotInfo = CurrentSlotInfos[SlotIndex];
@@ -1983,55 +2087,90 @@ FReply SToonShaderGeneratorWidget::HandleApplyMaterialInstanceClicked(int32 Slot
     // 生成済みMIの確認
     if (SlotInfo.GeneratedMaterialInstancePath.IsNull())
     {
-        StatusText->SetText(
-            FText::FromString(
-                TEXT("エラー：先にMaterial Instanceを生成してください。")
-            )
-        ); 
-        
-        return FReply::Handled();
+        OutMessage = TEXT("適用失敗：生成済みのMaterial Instanceがありません。");
+        return EApplyResult::Failed;
     }
     
     // MaterialInstanceのロード
-    UObject* LoadedMaterialObject = SlotInfo.GeneratedMaterialInstancePath.TryLoad();
-    
-    UMaterialInstanceConstant* MaterialInstance = Cast<UMaterialInstanceConstant>(LoadedMaterialObject);
+    UMaterialInstanceConstant* MaterialInstance =
+        Cast<UMaterialInstanceConstant>(
+            SlotInfo.GeneratedMaterialInstancePath.TryLoad()
+        );
     
     if (!IsValid(MaterialInstance))
     {
-        StatusText->SetText(
-            FText::FromString(
-                TEXT("エラー：生成したMaterial Instanceを読み込めません。")
-            )
-        );
-        return FReply::Handled();
+        OutMessage = TEXT("適用失敗：生成したMaterial Instanceを読み込めません。");
+        return EApplyResult::Failed;
     }
     
     // Skeletal Meshのロード
-    UObject* LoadedMeshObject = SelectedSkeletalMeshPath.TryLoad();
-    
-    USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(LoadedMeshObject);
+    USkeletalMesh* SkeletalMesh =
+        Cast<USkeletalMesh>(SelectedSkeletalMeshPath.TryLoad());
     
     if (!IsValid(SkeletalMesh))
     {
-        StatusText->SetText(
-            FText::FromString(
-                TEXT("エラー：Skeletal Meshを読み込めません。")
-            )
+        OutMessage = TEXT("適用失敗：Skeletal Meshを読み込めません。");
+        return EApplyResult::Failed;
+    }
+
+    // ウィジェット上のマテリアル名表示（Material：〇〇）を更新する
+    const auto UpdateMaterialNameDisplay = [this, SlotIndex, &SlotInfo, MaterialInstance]()
+    {
+        SlotInfo.MaterialName = MaterialInstance->GetName();
+        SlotInfo.bHasMaterial = true;
+
+        if (TSharedPtr<STextBlock>* TextWidget = MaterialNameTextBlocks.Find(SlotIndex))
+        {
+            if (TextWidget->IsValid())
+            {
+                (*TextWidget)->SetText(
+                    FText::FromString(
+                        FString::Printf(
+                            TEXT("Material：%s"),
+                            *SlotInfo.MaterialName
+                        )
+                    )
+                );
+            }
+        }
+    };
+
+    // ==========================================
+    // 既にこのMIが割り当て済みの場合
+    // MIアセットは上書き更新済みなので、再割り当てと確認は不要
+    // ==========================================
+    const TArray<FSkeletalMaterial>& MeshMaterials = SkeletalMesh->GetMaterials();
+
+    const bool bAlreadyAssigned =
+        MeshMaterials.IsValidIndex(SlotIndex) &&
+        MeshMaterials[SlotIndex].MaterialInterface.Get() == MaterialInstance;
+
+    if (bAlreadyAssigned)
+    {
+        UpdateMaterialNameDisplay();
+
+        OutMessage = FString::Printf(
+            TEXT("適用済み：%s の内容を更新しました。"),
+            *MaterialInstance->GetName()
         );
-        return FReply::Handled();
+
+        return EApplyResult::AlreadyApplied;
     }
     
+    // ==========================================
     // 適用前の確認
+    // Skeletal Meshアセット自体を書き換えるため、初回の適用時のみ確認する
+    // ==========================================
     const FString ConfirmationMessage = FString::Printf(
         TEXT(
-            "以下のMaterial Instanceを適用します。\n\n"
+            "生成したMaterial Instanceを適用します。\n\n"
             "Skeletal Mesh：%s\n"
             "Material Slot：%s\n"
             "Material Instance：%s\n\n"
             "この変更は、このSkeletal Meshを使用する"
             "すべてのActorに影響します。\n\n"
-            "実行しますか？"
+            "実行しますか？\n"
+            "（キャンセルしてもMaterial Instanceは生成済みです）"
             ),
             *SkeletalMesh->GetName(),
             *SlotInfo.SlotName.ToString(),
@@ -2046,10 +2185,8 @@ FReply SToonShaderGeneratorWidget::HandleApplyMaterialInstanceClicked(int32 Slot
     
     if (UserResponse != EAppReturnType::Yes)
     {
-        StatusText->SetText(
-            FText::FromString(TEXT("状態：適用をキャンセルしました。"))
-        );
-        return FReply::Handled();
+        OutMessage = TEXT("未適用：適用をキャンセルしました（Material Instanceは生成済みです）。");
+        return EApplyResult::Cancelled;
     }
     
     // Materialを適用
@@ -2063,69 +2200,23 @@ FReply SToonShaderGeneratorWidget::HandleApplyMaterialInstanceClicked(int32 Slot
             ErrorMessage
         );
     
-    // プレビューにも適用結果を反映
-    if (PreviewViewport.IsValid())
-    {
-        PreviewViewport->SetPreviewMaterialForSlot(
-            SlotIndex,
-            MaterialInstance
-        );    
-    }
-    
-    // Preview Materialを設定した後
-    if (PreviewViewport.IsValid())
-    {
-        RefreshPreviewBaseColorTexture(
-            SlotIndex,
-            false
-        );
-
-        RefreshPreviewBasicMaterialSettings();
-    }
-    
     if (!bSuccess)
     {
-        StatusText->SetText(
-            FText::FromString(
-                FString::Printf(
-                    TEXT("適用失敗：%s"),
-                    *ErrorMessage
-                )
-            )
+        OutMessage = FString::Printf(
+            TEXT("適用失敗：%s"),
+            *ErrorMessage
         );
-        return FReply::Handled();
+        return EApplyResult::Failed;
     }
     
     //  UIの情報を更新
+    UpdateMaterialNameDisplay();
     
-    SlotInfo.MaterialName = MaterialInstance->GetName();
-    SlotInfo.bHasMaterial = true;
-    
-    // ウィジェット上のマテリアル名表示（Material：〇〇）を動的に更新
-    if (TSharedPtr<STextBlock>* TextWidget = MaterialNameTextBlocks.Find(SlotIndex))
-    {
-        if (TextWidget->IsValid())
-        {
-            (*TextWidget)->SetText(
-                FText::FromString(
-                    FString::Printf(
-                        TEXT("Material：%s"),
-                        *SlotInfo.MaterialName
-                    )
-                )
-            );
-        }
-    }
-    
-    StatusText->SetText(
-        FText::FromString(
-            FString::Printf(
-                TEXT("適用成功：%s"),
-                *MaterialInstance->GetName()
-            )
-        )
+    OutMessage = FString::Printf(
+        TEXT("適用成功：%s"),
+        *MaterialInstance->GetName()
     );
-    return FReply::Handled();
+    return EApplyResult::Applied;
 }
 
 FReply SToonShaderGeneratorWidget::HandleRestoreOriginalMaterialClicked(int32 SlotIndex)
@@ -2907,4 +2998,95 @@ bool SToonShaderGeneratorWidget::RefreshPreviewBaseColorTexture(
         ParameterName,
         Texture
     );
+}
+
+
+// ==================================================
+// プレビュー用Toon Materialの準備
+// MI生成前でもBase Colorなどをプレビューに反映できるようにする
+// ==================================================
+
+bool SToonShaderGeneratorWidget::EnsurePreviewToonMaterialForSlot(
+    int32 SlotIndex,
+    bool bForceRebuild)
+{
+    if (!PreviewViewport.IsValid())
+    {
+        return false;
+    }
+
+    if (!CurrentSlotInfos.IsValidIndex(SlotIndex))
+    {
+        return false;
+    }
+
+    const FToonMaterialSlotInfo& SlotInfo =
+        CurrentSlotInfos[SlotIndex];
+
+    // ==========================================
+    // 用途に対応するMaster Materialを取得
+    // ==========================================
+
+    FSoftObjectPath MasterMaterialPath;
+
+    FString MasterMaterialName;
+    FString ResolveError;
+
+    if (!FToonMasterMaterialRegistry::Resolve(
+        SlotInfo.MaterialType,
+        MasterMaterialPath,
+        MasterMaterialName,
+        ResolveError))
+    {
+        return false;
+    }
+
+    UMaterial* MasterMaterial =
+        Cast<UMaterial>(MasterMaterialPath.TryLoad());
+
+    if (!IsValid(MasterMaterial))
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("[ToonShaderGenerator] %sを読み込めません。"),
+            *MasterMaterialName
+        );
+
+        return false;
+    }
+
+    // ==========================================
+    // 既に同じMaster由来のMIDがあれば、それをそのまま使う
+    // (MI生成後のMIDは親MIのベースがMasterなので、ここに該当する)
+    // ==========================================
+
+    if (!bForceRebuild)
+    {
+        UMaterialInstanceDynamic* ExistingMID =
+            PreviewViewport->GetPreviewMaterialInstanceDynamic(SlotIndex);
+
+        if (IsValid(ExistingMID) &&
+            ExistingMID->GetBaseMaterial() == MasterMaterial)
+        {
+            return true;
+        }
+    }
+
+    // ==========================================
+    // Master Materialからプレビュー専用MIDを作成
+    // (Skeletal Meshアセット自体は書き換えない)
+    // ==========================================
+
+    if (!PreviewViewport->SetPreviewMaterialForSlot(
+        SlotIndex,
+        MasterMaterial))
+    {
+        return false;
+    }
+
+    // 基本カラー設定を新しいMIDへ再適用
+    RefreshPreviewBasicMaterialSettings();
+
+    return true;
 }

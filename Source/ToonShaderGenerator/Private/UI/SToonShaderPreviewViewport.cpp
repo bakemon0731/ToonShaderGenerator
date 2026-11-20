@@ -202,6 +202,26 @@ bool SToonShaderPreviewViewport::SetPreviewMaterialForSlot(int32 SlotIndex, UMat
 }
 
 // ==================================================
+// プレビュー用MIDの取得
+// ==================================================
+UMaterialInstanceDynamic* SToonShaderPreviewViewport::GetPreviewMaterialInstanceDynamic(int32 SlotIndex) const
+{
+	if (!IsValid(PreviewMeshComponent))
+	{
+		return nullptr;
+	}
+
+	if (SlotIndex < 0 || SlotIndex >= PreviewMeshComponent->GetNumMaterials())
+	{
+		return nullptr;
+	}
+
+	return Cast<UMaterialInstanceDynamic>(
+		PreviewMeshComponent->GetMaterial(SlotIndex)
+	);
+}
+
+// ==================================================
 // プレビューのMaterialを元の状態に戻す
 // ==================================================
 bool SToonShaderPreviewViewport::RestorePreviewMaterialForSlot(int32 SlotIndex)
