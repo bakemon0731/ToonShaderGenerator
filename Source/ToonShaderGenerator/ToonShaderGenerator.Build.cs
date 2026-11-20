@@ -49,8 +49,9 @@ public class ToonShaderGenerator : ModuleRules
 				"AppFramework",
 				"MeshDescription",
 				"StaticMeshDescription",
-				"SkeletalMeshDescription"
-			}
+				"SkeletalMeshDescription",
+                "AdvancedPreviewScene"
+            }
 			);
 		
 		

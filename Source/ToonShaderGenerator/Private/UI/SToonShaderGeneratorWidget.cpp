@@ -35,6 +35,8 @@
 #include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Input/SCheckBox.h"
 
+#include "UI/SToonShaderPreviewViewport.h"
+
 
 // ==================================================
 // Material用途の表示名
@@ -102,10 +104,40 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
             SNew(SHorizontalBox)
 
             // ==========================================
-            // 左：設定(縦に長くなるのでスクロール可能にする)
+            // 左：3Dプレビュー
+            // ==========================================
+            +SHorizontalBox::Slot()
+            .FillWidth(0.4f)
+            .Padding(0.0f, 0.0f, 12.0f, 0.0f)
+            [ 
+                SNew(SVerticalBox)
+
+                // タイトル
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 8.0f)
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("3Dプレビュー")))
+                ]
+
+                // 3Dビューポート
+                + SVerticalBox::Slot()
+                .FillHeight(1.0f)
+                [
+                    SAssignNew(
+                        PreviewViewport,
+                        SToonShaderPreviewViewport
+                    )    
+                ]    
+            ]
+
+
+            // ==========================================
+            // 設定画面
             // ==========================================
             + SHorizontalBox::Slot()
-            .FillWidth(0.4f)
+            .FillWidth(0.24f)
             .Padding(0.0f, 0.0f, 12.0f, 0.0f)
             [
               SNew(SScrollBox)
@@ -464,10 +496,10 @@ void SToonShaderGeneratorWidget::Construct(const FArguments& InArgs)
             ]
 
             // ==========================================
-            // 右：Slot一覧(横に並べて、単独でスクロール可能)
+            // Material Slot一覧
             // ==========================================
             + SHorizontalBox::Slot()
-            .FillWidth(0.6f)
+            .FillWidth(0.36f)
             [
                 SNew(SVerticalBox)
 
@@ -523,6 +555,24 @@ void SToonShaderGeneratorWidget::HandleSkeletalMeshChanged(
                 FString::Printf(TEXT("選択中：%s"), *SelectedName)
             )
         );
+    }
+    
+    // ==========================================
+    // 3Dプレビュー更新
+    // ==========================================
+    USkeletalMesh* MeshToPreview = nullptr;
+    
+    if (AssetData.IsValid())
+    {
+        MeshToPreview = Cast<USkeletalMesh>(AssetData.GetAsset());
+    }
+    
+    // プレビューにMeshを渡す
+    if (PreviewViewport.IsValid())
+    {
+        PreviewViewport->SetPreviewSkeletalMesh(
+            MeshToPreview
+        );    
     }
 
     // Meshが変わったら前回の情報を破棄

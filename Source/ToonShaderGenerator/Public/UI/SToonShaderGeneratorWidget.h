@@ -13,6 +13,8 @@ struct FAssetData;
 
 class STextBlock;
 class SVerticalBox;
+class SToonShaderPreviewViewport;
+class SToonBasicMaterialSettings;
 
 class SToonShaderGeneratorWidget : public SCompoundWidget
 {
@@ -41,6 +43,10 @@ public:
 
 	// 検証結果の一覧
 	TSharedPtr<SVerticalBox> ValidationResultBox;
+
+	// 3DプレビューWidget
+	TSharedPtr<SToonShaderPreviewViewport> PreviewViewport;
+
 
 private:
 
